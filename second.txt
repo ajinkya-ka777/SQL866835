@@ -1,88 +1,111 @@
--- Create a temporary table to hold the xp_logininfo result for all Windows users
-CREATE TABLE #LoginInfo (
-    AccountName NVARCHAR(512),
-    Type NVARCHAR(50),
-    Privilege NVARCHAR(50),
-    MappedLoginName NVARCHAR(512),
-    PermissionPath NVARCHAR(512)
+-- Create a temporary table to store information about each database
+CREATE TABLE #DatabaseInfo (
+    InstanceName NVARCHAR(128),
+    DatabaseName NVARCHAR(128),
+    is_trustworthy_on NVARCHAR(10),
+    db_owner NVARCHAR(128),
+    is_sysadmin NVARCHAR(10),
+    IsLoginDisabled NVARCHAR(10),
+    IsOrphaned NVARCHAR(10),
+    DR_Role NVARCHAR(50)
 );
 
--- Declare variables to store the dynamic SQL and the username (db owner)
-DECLARE @sql NVARCHAR(MAX);
-DECLARE @username NVARCHAR(512);
+-- Loop through all databases
 DECLARE @dbname NVARCHAR(128);
-DECLARE @authType NVARCHAR(50);
+DECLARE @username NVARCHAR(128);
+DECLARE @sql NVARCHAR(MAX);
 
--- Cursor to loop through each database
 DECLARE db_cursor CURSOR FOR 
-SELECT db.name, suser_sname(db.owner_sid) AS db_owner, sp.type_desc AS AuthType
-FROM sys.databases db
-LEFT JOIN sys.server_principals sp ON db.owner_sid = sp.sid;
+SELECT db.name, suser_sname(db.owner_sid) AS db_owner
+FROM sys.databases db;
 
--- Open the cursor
 OPEN db_cursor;
 
--- Fetch the first row
-FETCH NEXT FROM db_cursor INTO @dbname, @username, @authType;
+FETCH NEXT FROM db_cursor INTO @dbname, @username;
 
--- Loop through all databases
 WHILE @@FETCH_STATUS = 0
 BEGIN
-    -- Check if the login is a Windows login
-    IF @authType = 'WINDOWS_LOGIN'
+    -- Insert basic database details into the temporary table
+    INSERT INTO #DatabaseInfo (InstanceName, DatabaseName, is_trustworthy_on, db_owner, is_sysadmin, IsLoginDisabled, IsOrphaned, DR_Role)
+    SELECT 
+        @@SERVICENAME AS InstanceName,
+        db.name AS DatabaseName,
+        CASE
+            WHEN db.is_trustworthy_on = 1 THEN 'Yes'
+            WHEN db.is_trustworthy_on = 0 THEN 'No'
+            ELSE 'NULL'
+        END AS 'is_trustworthy_on',
+        suser_sname(db.owner_sid) AS db_owner,
+        -- Default value for sysadmin role (using IS_SRVROLEMEMBER)
+        CASE
+            WHEN IS_SRVROLEMEMBER('sysadmin', suser_sname(db.owner_sid)) = 1 THEN 'Yes'
+            WHEN IS_SRVROLEMEMBER('sysadmin', suser_sname(db.owner_sid)) = 0 THEN 'No'
+            ELSE NULL -- Only process further if NULL
+        END AS is_sysadmin,
+        CASE
+            WHEN s1.is_disabled = 1 THEN 'Yes'
+            WHEN s1.is_disabled = 0 THEN 'No'
+            ELSE 'NULL'
+        END AS IsLoginDisabled,
+        CASE
+            WHEN s1.name IS NULL THEN 'Yes'
+            ELSE 'No'
+        END AS IsOrphaned,
+        CASE
+            WHEN dbm.mirroring_role = 1 THEN 'Mirroring - Primary'
+            WHEN dbm.mirroring_role = 2 THEN 'Mirroring - Secondary'
+            WHEN sys.fn_hadr_is_primary_replica(db.name) = 1 THEN 'AG - Primary'
+            WHEN sys.fn_hadr_is_primary_replica(db.name) = 0 THEN 'AG - Secondary'
+            ELSE 'None'
+        END AS 'DR_Role'
+    FROM sys.databases db
+    LEFT JOIN sys.sql_logins sl ON db.owner_sid = sl.sid
+    LEFT JOIN sys.server_principals s1 ON db.owner_sid = s1.sid
+    LEFT JOIN sys.database_mirroring dbm ON db.database_id = dbm.database_id
+    WHERE db.name = @dbname;
+    
+    -- If is_sysadmin is NULL, use xp_logininfo to check Windows admin privileges
+    IF EXISTS (SELECT 1 FROM #DatabaseInfo WHERE DatabaseName = @dbname AND is_sysadmin IS NULL)
     BEGIN
-        -- Construct the dynamic SQL to execute xp_logininfo for the fetched username
+        -- Prepare dynamic SQL to execute xp_logininfo for the owner
         SET @sql = N'EXEC xp_logininfo @acctname = ''' + @username + ''', @option = ''all''';
-
-        -- Insert xp_logininfo result into temporary table
+        
+        -- Create another temp table to hold xp_logininfo result
+        CREATE TABLE #LoginInfo (
+            AccountName NVARCHAR(512),
+            Type NVARCHAR(50),
+            Privilege NVARCHAR(50),
+            MappedLoginName NVARCHAR(512),
+            PermissionPath NVARCHAR(512)
+        );
+        
+        -- Insert xp_logininfo result into #LoginInfo
         INSERT INTO #LoginInfo
         EXEC sp_executesql @sql;
+        
+        -- Update the is_sysadmin field in the #DatabaseInfo table if admin privileges are found
+        UPDATE #DatabaseInfo
+        SET is_sysadmin = 
+            CASE 
+                WHEN EXISTS (SELECT 1 FROM #LoginInfo WHERE Privilege = 'admin') THEN 'Yes'
+                ELSE 'No'
+            END
+        WHERE DatabaseName = @dbname;
+        
+        -- Clean up temp table
+        DROP TABLE #LoginInfo;
     END
-
-    -- Fetch the next row
-    FETCH NEXT FROM db_cursor INTO @dbname, @username, @authType;
-END
+    
+    -- Fetch the next database
+    FETCH NEXT FROM db_cursor INTO @dbname, @username;
+END;
 
 -- Close and deallocate the cursor
 CLOSE db_cursor;
 DEALLOCATE db_cursor;
 
--- Now modify the larger query to check if admin privileges exist in the temporary table
-SELECT @@SERVICENAME AS InstanceName,
-    db.name AS DatabaseName,
-    CASE
-        WHEN db.is_trustworthy_on = 1 THEN 'Yes'
-        WHEN db.is_trustworthy_on = 0 THEN 'No'
-        WHEN db.is_trustworthy_on IS NULL THEN 'NULL'
-        ELSE CAST(db.is_trustworthy_on AS VARCHAR)
-    END AS 'is_trustworthy_on',
-    suser_sname(db.owner_sid) AS db_owner,
-    -- Check if the admin privilege exists in the temp table for each db owner
-    CASE
-        WHEN sp.type_desc = 'SQL_LOGIN' THEN 'No' -- If it's a SQL login like 'sa'
-        WHEN EXISTS (
-            SELECT 1 FROM #LoginInfo
-            WHERE AccountName = suser_sname(db.owner_sid) AND Privilege = 'admin'
-        ) THEN 'Yes'
-        ELSE 'No'
-    END AS 'is_sysadmin',
-    CASE
-        WHEN s1.is_disabled = 1 THEN 'Yes'
-        WHEN s1.is_disabled = 0 THEN 'No'
-        WHEN s1.is_disabled IS NULL THEN 'NULL'
-        ELSE CAST(s1.is_disabled AS VARCHAR)
-    END AS 'IsLoginDisabled',
-    CASE
-        WHEN s1.name IS NULL THEN 'Yes'
-        ELSE 'No'
-    END AS IsOrphaned,
-    CASE
-        WHEN dbm.mirroring_role = 1 THEN 'Mirroring - Primary'
-        WHEN dbm.mirroring_role = 2 THEN 'Mirroring - Secondary'
-        WHEN sys.fn_hadr_is_primary_replica(db.name) = 1 THEN 'AG - Primary'
-        WHEN sys.fn_hadr_is_primary_replica(db.name) = 0 THEN 'AG - Secondary'
-        ELSE 'None'
-    END AS 'DR_Role'
-FROM sys.databases db
-LEFT JOIN sys.sql_logins sl ON db.owner_sid = sl.sid
-LEFT JOIN sys.database_mirroring dbm ON db.database_id =
+-- Select the final result from the temp table
+SELECT * FROM #DatabaseInfo;
+
+-- Drop the temporary table
+DROP TABLE #DatabaseInfo;
