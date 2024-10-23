@@ -1,0 +1,11 @@
+-- Drop cursor if it already exists
+IF CURSOR_STATUS('global', 'cur_LoginInfo') >= -1
+BEGIN
+    CLOSE cur_LoginInfo;
+    DEALLOCATE cur_LoginInfo;
+END
+
+-- Now declare the cursor
+DECLARE cur_LoginInfo CURSOR FOR
+SELECT AccountName, Privilege
+FROM #LoginInfo;
