@@ -1,0 +1,17 @@
+-- Drop temp table if it already exists
+IF OBJECT_ID('tempdb..#DatabaseInfo', 'U') IS NOT NULL
+BEGIN
+    DROP TABLE #DatabaseInfo;
+END
+
+-- Now create the temporary table
+CREATE TABLE #DatabaseInfo (
+    InstanceName NVARCHAR(128),
+    DatabaseName NVARCHAR(128),
+    is_trustworthy_on NVARCHAR(10),
+    db_owner NVARCHAR(128),
+    is_sysadmin NVARCHAR(10),
+    IsLoginDisabled NVARCHAR(10),
+    IsOrphaned NVARCHAR(10),
+    DR_Role NVARCHAR(20)
+);
