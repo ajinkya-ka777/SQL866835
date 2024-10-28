@@ -1,17 +1,7 @@
--- Drop temporary tables if they exist
-IF OBJECT_ID('tempdb..#LoginInfo') IS NOT NULL DROP TABLE #LoginInfo;
+-- Drop temporary table if it exists to avoid conflicts
 IF OBJECT_ID('tempdb..#OrphanedUsers') IS NOT NULL DROP TABLE #OrphanedUsers;
 
--- Create a temporary table to store login information from xp_logininfo
-CREATE TABLE #LoginInfo (
-    LoginName NVARCHAR(255),
-    AccountType NVARCHAR(50),
-    Privilege NVARCHAR(50),
-    MappedLoginName NVARCHAR(255),
-    PermissionPath NVARCHAR(255)
-);
-
--- Create a temporary table to store orphaned users
+-- Create a temporary table to store orphaned user information
 CREATE TABLE #OrphanedUsers (
     DatabaseName NVARCHAR(255),
     UserName NVARCHAR(255)
@@ -29,26 +19,20 @@ SELECT @@SERVICENAME AS InstanceName,
     CASE
         WHEN db.is_trustworthy_on = 1 THEN 'Yes'
         WHEN db.is_trustworthy_on = 0 THEN 'No'
-        WHEN db.is_trustworthy_on IS NULL THEN 'NULL'
-        ELSE CAST(db.is_trustworthy_on AS VARCHAR)
+        ELSE 'NULL'
     END AS is_trustworthy_on,
     SUSER_SNAME(db.owner_sid) AS db_owner,
     CASE
         WHEN IS_SRVROLEMEMBER('sysadmin', SUSER_SNAME(db.owner_sid)) = 1 THEN 'Yes'
         WHEN IS_SRVROLEMEMBER('sysadmin', SUSER_SNAME(db.owner_sid)) = 0 THEN 'No'
-        WHEN IS_SRVROLEMEMBER('sysadmin', SUSER_SNAME(db.owner_sid)) IS NULL THEN 'NULL'
-        ELSE CAST(IS_SRVROLEMEMBER('sysadmin', SUSER_SNAME(db.owner_sid)) AS VARCHAR)
+        ELSE 'NULL'
     END AS is_sysadmin,
     CASE
         WHEN sl.is_disabled = 1 THEN 'Yes'
         WHEN sl.is_disabled = 0 THEN 'No'
-        WHEN sl.is_disabled IS NULL THEN 'NULL'
-        ELSE CAST(sl.is_disabled AS VARCHAR)
+        ELSE 'NULL'
     END AS IsLoginDisabled,
-    CASE
-        WHEN o.UserName IS NOT NULL THEN 'Yes'
-        ELSE 'No'
-    END AS IsOrphaned,
+    NULL AS IsOrphaned, -- Temporarily setting this to NULL to update later
     CASE
         WHEN dbm.mirroring_role = 1 THEN 'Mirroring - Primary'
         WHEN dbm.mirroring_role = 2 THEN 'Mirroring - Secondary'
@@ -56,44 +40,21 @@ SELECT @@SERVICENAME AS InstanceName,
         WHEN sys.fn_hadr_is_primary_replica(db.name) = 0 THEN 'AG - Secondary'
         ELSE 'None'
     END AS DR_Role
+INTO #DatabaseInfo
 FROM sys.databases db
 LEFT JOIN sys.sql_logins sl ON db.owner_sid = sl.sid
-LEFT JOIN sys.database_mirroring dbm ON db.database_id = dbm.database_id
-LEFT JOIN #OrphanedUsers o ON db.name = o.DatabaseName AND SUSER_SNAME(db.owner_sid) = o.UserName;
+LEFT JOIN sys.database_mirroring dbm ON db.database_id = dbm.database_id;
 
--- Update the is_sysadmin column if the login has admin privileges
-DECLARE @LoginName NVARCHAR(255);
+-- Update the IsOrphaned column based on #OrphanedUsers data
+UPDATE #DatabaseInfo
+SET IsOrphaned = 'Yes'
+FROM #DatabaseInfo d
+JOIN #OrphanedUsers o ON d.DatabaseName = o.DatabaseName AND d.db_owner = o.UserName;
 
--- Cursor to loop through each login
-DECLARE login_cursor CURSOR FOR
-SELECT name
-FROM sys.sql_logins
-WHERE IS_SRVROLEMEMBER('sysadmin', name) IS NULL;
+-- Final select from the updated #DatabaseInfo
+SELECT *
+FROM #DatabaseInfo;
 
-OPEN login_cursor;
-FETCH NEXT FROM login_cursor INTO @LoginName;
-
-WHILE @@FETCH_STATUS = 0
-BEGIN
-    -- Insert login details into #LoginInfo table
-    INSERT INTO #LoginInfo
-    EXEC xp_logininfo @acctname = @LoginName, @option = 'all';
-
-    -- Update the is_sysadmin column if admin privileges found
-    UPDATE sysAdminTable
-    SET is_sysadmin = 'Yes'
-    FROM (
-        SELECT DISTINCT DatabaseName, db_owner, is_sysadmin
-        FROM #LoginInfo
-        WHERE Privilege = 'admin' AND LoginName = @LoginName
-    ) AS sysAdminTable;
-
-    FETCH NEXT FROM login_cursor INTO @LoginName;
-END
-
-CLOSE login_cursor;
-DEALLOCATE login_cursor;
-
--- Drop temporary tables after use
-DROP TABLE IF EXISTS #LoginInfo;
+-- Clean up temporary tables
 DROP TABLE IF EXISTS #OrphanedUsers;
+DROP TABLE IF EXISTS #DatabaseInfo;
