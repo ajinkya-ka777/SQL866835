@@ -1,0 +1,35 @@
+IF EXISTS (SELECT 1 FROM #DatabaseInfo WHERE DatabaseName = @dbname AND DBOwner = @loginname AND IsOrphaned IS NULL)
+BEGIN
+    IF OBJECT_ID('tempdb..#OrphanedUsers', 'U') IS NOT NULL
+    BEGIN
+        DROP TABLE #OrphanedUsers;
+    END
+
+    -- Creating a temporary table to store orphaned user information
+    CREATE TABLE #OrphanedUsers (
+        DatabaseName NVARCHAR(255),
+        UserName NVARCHAR(255)
+    );
+
+    -- Check for orphaned users directly
+    DECLARE @orphanedUsers NVARCHAR(MAX);
+
+    SET @orphanedUsers = 'USE [' + @dbname + ']; ' +
+                         'INSERT INTO #OrphanedUsers (DatabaseName, UserName) ' +
+                         'SELECT ''' + @dbname + ''', dp.name ' +
+                         'FROM sys.database_principals dp ' +
+                         'LEFT JOIN sys.server_principals sp ON dp.sid = sp.sid ' +
+                         'WHERE sp.sid IS NULL AND dp.type IN (''S'', ''U'');';
+
+    EXEC sp_executesql @orphanedUsers;
+
+    -- Update the IsOrphaned column based on #OrphanedUsers data
+    UPDATE #DatabaseInfo
+    SET IsOrphaned = CASE
+        WHEN EXISTS (SELECT 1 FROM #OrphanedUsers ou WHERE ou.DatabaseName = @dbname AND ou.UserName = DBOwner) THEN 'YES'
+        ELSE 'No'
+    END
+    WHERE DatabaseName = @dbname AND DBOwner = @loginname;
+
+    DROP TABLE #OrphanedUsers;
+END
