@@ -1,43 +1,4 @@
-IF EXISTS (SELECT 1 FROM #DatabaseInfo WHERE DatabaseName = @dbname AND DBOwner = @loginname AND IsOrphaned IS NULL)
-BEGIN
-    IF OBJECT_ID('tempdb..#OrphanedUsers', 'U') IS NOT NULL
-    BEGIN
-        DROP TABLE #OrphanedUsers;
-    END
+Our script currently produces an output with a total of 8 columns. However, the Tanium team has set a limit of 5 columns for CSV outputs. To work around this, we’ve split the script into two separate scripts: one that outputs 4 columns and another that outputs 5.
 
-    -- Creating a temporary table to store orphaned user information
-    CREATE TABLE #OrphanedUsers (
-        UserName NVARCHAR(255)
-    );
+We can later merge these outputs in Splunk to bring all 8 columns together.
 
-    -- Capture the output of sp_change_users_login 'report'
-    DECLARE @username NVARCHAR(255);
-
-    DECLARE orphaned_user_cursor CURSOR FOR
-    EXEC sp_change_users_login 'report';
-
-    OPEN orphaned_user_cursor;
-
-    FETCH NEXT FROM orphaned_user_cursor INTO @username;
-
-    WHILE @@FETCH_STATUS = 0
-    BEGIN
-        -- Insert orphaned user into the temp table
-        INSERT INTO #OrphanedUsers (UserName) VALUES (@username);
-
-        FETCH NEXT FROM orphaned_user_cursor INTO @username;
-    END
-
-    CLOSE orphaned_user_cursor;
-    DEALLOCATE orphaned_user_cursor;
-
-    -- Update the IsOrphaned column based on #OrphanedUsers data
-    UPDATE #DatabaseInfo
-    SET IsOrphaned = CASE
-        WHEN EXISTS (SELECT 1 FROM #OrphanedUsers ou WHERE ou.UserName = DBOwner) THEN 'YES'
-        ELSE 'No'
-    END
-    WHERE DatabaseName = @dbname AND DBOwner = @loginname;
-
-    DROP TABLE #OrphanedUsers;
-END
