@@ -1,0 +1,21 @@
+Here's a rephrased version of the text from the image:
+
+
+---
+
+Thank you for your support, Naga.
+
+As discussed on the call, I have made the following changes:
+
+1. Added a condition to check if the instance is in the 'Running' state. This will help prevent issues arising from instances that are not currently running.
+
+
+2. Added a condition to filter only online databases in the T-SQL script. This will help avoid errors in stored procedure commands.
+
+
+
+Please review the pull request below and provide support for the peer review comments.
+
+
+---
+
