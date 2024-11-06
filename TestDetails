@@ -1,0 +1,62 @@
+# Define SQL Server connection parameters
+$serverInstance = "YourSQLServerInstance"
+$databaseName = "master"
+$outputCsvPath = "C:\SQLAndADLoginDetails.csv"
+
+# Load SQL Server module
+Import-Module SqlServer
+
+# SQL query to fetch login details for both SQL and AD accounts
+$sqlQuery = @"
+SELECT 
+    name AS LoginName,
+    type_desc AS LoginType,
+    is_disabled AS IsDisabled,
+    LOGINPROPERTY(name, 'PasswordLastSetTime') AS PasswordLastSetTime,
+    LOGINPROPERTY(name, 'DaysUntilExpiration') AS DaysUntilExpiration,
+    LOGINPROPERTY(name, 'PasswordExpiration') AS PasswordExpirationDate,
+    LOGINPROPERTY(name, 'IsPolicyChecked') AS IsPasswordPolicyChecked,
+    LOGINPROPERTY(name, 'IsExpirationChecked') AS IsPasswordExpirationChecked
+FROM 
+    sys.sql_logins
+WHERE 
+    name NOT LIKE '##%' -- Exclude system accounts
+    AND type_desc IN ('SQL_LOGIN', 'WINDOWS_LOGIN')
+"@
+
+# Run the SQL query
+$loginDetails = Invoke-Sqlcmd -ServerInstance $serverInstance -Database $databaseName -Query $sqlQuery
+
+# Separate SQL logins and AD logins
+$sqlLogins = $loginDetails | Where-Object { $_.LoginType -eq 'SQL_LOGIN' }
+$adLogins = $loginDetails | Where-Object { $_.LoginType -eq 'WINDOWS_LOGIN' }
+
+# Get additional details for AD logins from Active Directory
+$adLoginDetails = foreach ($adLogin in $adLogins) {
+    try {
+        # Fetch AD user details using Get-ADUser
+        $adUser = Get-ADUser -Identity $adLogin.LoginName -Properties DisplayName, SamAccountName, Enabled, PasswordLastSet, PasswordNeverExpires, AccountExpirationDate
+
+        # Create a custom object to store both SQL and AD details for this login
+        [PSCustomObject]@{
+            LoginName = $adLogin.LoginName
+            LoginType = $adLogin.LoginType
+            IsDisabled = if ($adLogin.IsDisabled -eq 1) { "Yes" } else { "No" }
+            PasswordLastSetTime = $adUser.PasswordLastSet
+            PasswordExpirationDate = if ($adUser.PasswordNeverExpires -eq $true) { "Never Expires" } else { $adUser.AccountExpirationDate }
+            IsPasswordPolicyChecked = if ($adLogin.IsPasswordPolicyChecked -eq 1) { "Yes" } else { "No" }
+            IsPasswordExpirationChecked = if ($adLogin.IsPasswordExpirationChecked -eq 1) { "Yes" } else { "No" }
+        }
+    }
+    catch {
+        Write-Warning "Unable to retrieve AD details for $($adLogin.LoginName): $_"
+    }
+}
+
+# Combine SQL logins and AD logins
+$combinedLogins = $sqlLogins + $adLoginDetails
+
+# Export combined details to CSV
+$combinedLogins | Export-Csv -Path $outputCsvPath -NoTypeInformation -Encoding UTF8
+
+Write-Host "Login details for both SQL and AD accounts have been exported to $outputCsvPath"
