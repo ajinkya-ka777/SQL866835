@@ -1,0 +1,12 @@
+SELECT 1 
+FROM #DatabaseInfo di
+WHERE di.DatabaseName = @dbname
+  AND di.DBOwner = @loginname
+  AND di.IsOrphaned IS NULL
+  AND di.DRRole != 'AG - Secondary'
+  AND EXISTS (
+      SELECT 1 
+      FROM sys.databases db 
+      WHERE db.name = di.DatabaseName 
+        AND db.state IN (0)
+  );
