@@ -1,0 +1,6 @@
+$LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', ' + $_.IsPasswordPolicyChecked + ', ' + $_.IsPasswordExpirationChecked}} | ForEach-Object {
+    Write-Host "Logins with: $($_.Group[0].IsLoginDisabled), $($_.Group[0].IsPasswordPolicyChecked), $($_.Group[0].IsPasswordExpirationChecked)}"
+    foreach ($login in $_.Group) {
+        Write-Host "  - $($login.LoginName)"
+    }
+}
