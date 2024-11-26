@@ -1,13 +1,13 @@
-$LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', ' + $_.IsPasswordPolicyChecked + ', ' + $_.IsPasswordExpirationChecked}} | ForEach-Object {
-    Write-Host "Logins with: $($_.Group[0].IsLoginDisabled), $($_.Group[0].IsPasswordPolicyChecked), $($_.Group[0].IsPasswordExpirationChecked)}"
-    foreach ($login in $_.Group) {
-        Write-Host "  - $($login.LoginName)"
+$groupedData = $LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', ' + $_.IsPasswordPolicyChecked + ', ' + $_.IsPasswordExpirationChecked}}
+
+$csvData = foreach ($group in $groupedData) {
+    [PSCustomObject]@{
+        InstanceName = $group.Group[0].SQLinstance
+        IsLoginDisabled = $group.Group[0].IsLoginDisabled
+        IsPasswordPolicyChecked = $group.Group[0].IsPasswordPolicyChecked
+        IsPasswordExpirationChecked = $group.Group[0].IsPasswordExpirationChecked
+        LoginNames = ($group.Group | Select-Object -ExpandProperty LoginName -Unique) -join ','
     }
 }
 
-
-nxt
-$groupedData = $LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', ' + $_.IsPasswordPolicyChecked + ', ' + $_.IsPasswordExpirationChecked}}
-$groupedData | ForEach-Object {
-    $_ | Export-Csv -Path "output_$($_.Group[0].IsLoginDisabled)_$($_.Group[0].IsPasswordPolicyChecked)_$($_.Group[0].IsPasswordExpirationChecked).csv" -NoTypeInformation
-}
+$csvData | Export-Csv -Path output.csv -NoTypeInformation
