@@ -4,3 +4,10 @@ $LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', '
         Write-Host "  - $($login.LoginName)"
     }
 }
+
+
+nxt
+$groupedData = $LimitedColumns | Group-Object -Property @{Expression={$_.IsLoginDisabled + ', ' + $_.IsPasswordPolicyChecked + ', ' + $_.IsPasswordExpirationChecked}}
+$groupedData | ForEach-Object {
+    $_ | Export-Csv -Path "output_$($_.Group[0].IsLoginDisabled)_$($_.Group[0].IsPasswordPolicyChecked)_$($_.Group[0].IsPasswordExpirationChecked).csv" -NoTypeInformation
+}
