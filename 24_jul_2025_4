@@ -1,0 +1,7 @@
+# Load config
+$config = Get-Content -Path ".\config.json" -Raw | ConvertFrom-Json
+
+# Enable features
+foreach ($feature in $config.IISFeatures.FeaturesToEnable) {
+    Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction SilentlyContinue
+}
