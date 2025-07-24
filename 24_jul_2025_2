@@ -1,0 +1,71 @@
+param (
+    [string]$ConfigPath = ".\config.json"
+)
+
+# Load and parse JSON config
+$config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+
+# Step 1: Enable IIS Features
+Write-Host "Enabling IIS roles/features..."
+foreach ($feature in $config.IISFeatures.FeaturesToEnable) {
+    Write-Host "Enabling feature: $feature"
+    Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction SilentlyContinue
+}
+foreach ($feature in $config.IISFeatures.FeaturesToDisable) {
+    Write-Host "Disabling feature: $feature"
+    Uninstall-WindowsFeature -Name $feature -ErrorAction SilentlyContinue
+}
+
+# Step 2: Enable Access Control on Shared Folder
+$folderPath = $config.AccessControl.SharedFolderPath
+
+if (-Not (Test-Path $folderPath)) {
+    Write-Host "Creating folder: $folderPath"
+    New-Item -ItemType Directory -Path $folderPath -Force | Out-Null
+} else {
+    Write-Host "Folder already exists: $folderPath"
+}
+
+Write-Host "Configuring folder permissions..."
+$acl = Get-Acl $folderPath
+
+foreach ($user in $config.AccessControl.UserAccounts) {
+    $accessRight = switch ($user.AccessRight.ToLower()) {
+        "read" { [System.Security.AccessControl.FileSystemRights]::Read }
+        "fullcontrol" { [System.Security.AccessControl.FileSystemRights]::FullControl }
+        "modify" { [System.Security.AccessControl.FileSystemRights]::Modify }
+        default { [System.Security.AccessControl.FileSystemRights]::Read }
+    }
+
+    $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule($user.AccountName, $accessRight, "ContainerInherit,ObjectInherit", "None", "Allow")
+    $acl.SetAccessRule($accessRule)
+}
+
+Set-Acl -Path $folderPath -AclObject $acl
+
+# Step 3: Create and copy Tools folder, then copy Venafi tools
+$toolsDest = $config.Tools.DestinationPath
+$venafiSource = $config.Tools.SourceVenafiToolsPath
+
+if (-Not (Test-Path $toolsDest)) {
+    Write-Host "Creating tools destination folder: $toolsDest"
+    New-Item -ItemType Directory -Path $toolsDest -Force | Out-Null
+} else {
+    Write-Host "Tools destination folder already exists: $toolsDest"
+}
+
+Write-Host "Copying Venafi tools from $venafiSource to $toolsDest"
+Copy-Item -Path "$venafiSource\*" -Destination $toolsDest -Recurse -Force
+
+# Step 4: Copy D:\Scripts to new server
+$scriptsSource = $config.ScriptsCopy.SourcePath
+$scriptsDest = $config.ScriptsCopy.DestinationPath
+
+Write-Host "Copying scripts from $scriptsSource to $scriptsDest"
+Copy-Item -Path "$scriptsSource\*" -Destination $scriptsDest -Recurse -Force
+
+# Step 5: Change time zone to UTC
+Write-Host "Setting time zone to $($config.TimeZone)"
+Set-TimeZone -Id $config.TimeZone
+
+Write-Host "Script execution completed."
