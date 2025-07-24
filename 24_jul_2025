@@ -1,0 +1,22 @@
+{
+  "IISFeatures": {
+    "FeaturesToEnable": ["Web-Server", "Web-Http-Redirect", "Web-Common-Http"],
+    "FeaturesToDisable": []
+  },
+  "AccessControl": {
+    "SharedFolderPath": "C:\\RandomSharedFolder",
+    "UserAccounts": [
+      {"AccountName": "DOMAIN\\User1", "AccessRight": "Read"},
+      {"AccountName": "DOMAIN\\User2", "AccessRight": "FullControl"}
+    ]
+  },
+  "Tools": {
+    "DestinationPath": "D:\\Tools",
+    "SourceVenafiToolsPath": "C:\\Source\\VenafiTools"
+  },
+  "ScriptsCopy": {
+    "SourcePath": "D:\\Scripts",
+    "DestinationPath": "\\\\NewServer\\Scripts"
+  },
+  "TimeZone": "UTC"
+}
