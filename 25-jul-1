@@ -1,0 +1,52 @@
+{
+  "Environments": {
+    "DEV": {
+      "AccessControl": {
+        "SharedFolder": "C:\\DevShared",
+        "Users": [
+          {"Account": "DEV\\devuser1", "AccessRight": "Read"},
+          {"Account": "DEV\\devuser2", "AccessRight": "Modify"}
+        ]
+      }
+    },
+    "TEST": {
+      "AccessControl": {
+        "SharedFolder": "C:\\TestShared",
+        "Users": [
+          {"Account": "TEST\\testuser1", "AccessRight": "Read"},
+          {"Account": "TEST\\testuser2", "AccessRight": "FullControl"}
+        ]
+      }
+    },
+    "PROD": {
+      "AccessControl": {
+        "SharedFolder": "C:\\ProdShared",
+        "Users": [
+          {"Account": "PROD\\produser1", "AccessRight": "Read"},
+          {"Account": "PROD\\produser2", "AccessRight": "FullControl"},
+          {"Account": "PROD\\prodadmin", "AccessRight": "FullControl"}
+        ]
+      }
+    }
+  },
+  "WindowsFeatures": [
+    "Web-Server","Web-Common-Http","Web-Static-Content","Web-Default-Doc",
+    "Web-Http-Errors","Web-App-Dev","Web-Net-Ext45","Web-Asp-Net45",
+    "Web-ISAPI-Ext","Web-ISAPI-Filter","Web-Includes","Web-WebSockets",
+    "Web-Security","Web-Filtering","Web-Basic-Auth","Web-Windows-Auth",
+    "Web-Performance","Web-Stat-Compression","Web-FTP-Server",
+    "Web-FTP-Service","Web-FTP-Ext","Web-Mgmt-Tools","Web-Mgmt-Console",
+    "NET-Framework-Features","NET-Framework-45-Features","NET-WCF-Services45",
+    "NET-WCF-HTTP-Activation45","Telnet-Client","SNMP-Service"
+  ],
+  "ToolsCopy": {
+    "SourceTools": "C:\\Source\\VenafiTools",
+    "DestTools": "D:\\Tools"
+  },
+  "ScriptsCopy": {
+    "SourcePath": "D:\\Scripts",
+    "DestinationPath": "\\\\NewServer\\Scripts"
+  },
+  "TimeZone": "UTC",
+  "LogFile": "C:\\WindowsSetupScript.log"
+}
