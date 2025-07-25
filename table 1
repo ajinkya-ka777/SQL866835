@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Server Manager Features</title>
+<style>
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 20px;
+  }
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th {
+    background-color: #f2f2f2;
+  }
+  /* Optional: For better readability on wide screens */
+  body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<h1>Windows Server Features and Server Manager Display Names</h1>
+
+<table>
+  <thead>
+    <tr>
+      <th>JSON Feature ID</th>
+      <th>Server Manager Display Name (with Hierarchy)</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>.NET-Framework-Core</code></td>
+      <td><strong>Features</strong> &gt; .NET Framework 3.5 Features</td>
+    </tr>
+    <tr>
+      <td><code>.NET-Framework-48</code></td>
+      <td><strong>Features</strong> &gt; .NET Framework 4.8 Features</td>
+    </tr>
+    <tr>
+      <td><code>.NET-Framework-48-ASPNET</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; ASP.NET 4.X</td>
+    </tr>
+    <tr>
+      <td><code>.NET-WCF-Services45</code></td>
+      <td><strong>Features</strong> &gt; .NET Framework 4.8 Features &gt; WCF Services</td>
+    </tr>
+    <tr>
+      <td><code>.NET-WCF-HTTP-Activation45</code></td>
+      <td><strong>Features</strong> &gt; .NET Framework 4.8 Features &gt; WCF Services &gt; HTTP Activation</td>
+    </tr>
+    <tr>
+      <td><code>.NET-WCF-TCP-PortSharing45</code></td>
+      <td><strong>Features</strong> &gt; .NET Framework 4.8 Features &gt; WCF Services &gt; TCP Port Sharing</td>
+    </tr>
+    <tr>
+      <td><code>AzureArcSetup</code></td>
+      <td><em>(Not typically in Server Manager Add Roles and Features)</em></td>
+    </tr>
+    <tr>
+      <td><code>Telnet-Client</code></td>
+      <td><strong>Features</strong> &gt; Telnet Client</td>
+    </tr>
+    <tr>
+      <td><code>SNMP-Service</code></td>
+      <td><strong>Features</strong> &gt; SNMP Service</td>
+    </tr>
+    <tr>
+      <td><code>WAS</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) (Implicitly installed or part of core IIS)</td>
+    </tr>
+    <tr>
+      <td><code>Web-Server</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS)</td>
+    </tr>
+    <tr>
+      <td><code>Web-Performance</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Performance</td>
+    </tr>
+    <tr>
+      <td><code>Web-Stat-Compression</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Performance &gt; Static Content Compression</td>
+    </tr>
+    <tr>
+      <td><code>Web-Security</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Security</td>
+    </tr>
+    <tr>
+      <td><code>Web-Filtering</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Security &gt; Request Filtering</td>
+    </tr>
+    <tr>
+      <td><code>Web-Basic-Auth</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Security &gt; Basic Authentication</td>
+    </tr>
+    <tr>
+      <td><code>Web-Cert-Auth</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Security &gt; Client Certificate Mapping Authentication</td>
+    </tr>
+    <tr>
+      <td><code>Web-Windows-Auth</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Security &gt; Windows Authentication</td>
+    </tr>
+    <tr>
+      <td><code>Web-App-Dev</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development</td>
+    </tr>
+    <tr>
+      <td><code>Web-FTP-Server</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; FTP Server</td>
+    </tr>
+    <tr>
+      <td><code>Web-FTP-Service</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; FTP Server &gt; FTP Service</td>
+    </tr>
+    <tr>
+      <td><code>Web-FTP-Ext</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; FTP Server &gt; FTP Extensibility</td>
+    </tr>
+    <tr>
+      <td><code>Web-Mgmt-Tools</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Management Tools</td>
+    </tr>
+    <tr>
+      <td><code>Web-Mgmt-Console</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Management Tools &gt; IIS Management Console</td>
+    </tr>
+    <tr>
+      <td><code>Web-Net-Ext</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; .NET Extensibility (or specific version)</td>
+    </tr>
+    <tr>
+      <td><code>Web-Net-Ext45</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; .NET Extensibility 4.5</td>
+    </tr>
+    <tr>
+      <td><code>Web-ISAPI-Ext</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; ISAPI Extensions</td>
+    </tr>
+    <tr>
+      <td><code>Web-ISAPI-Filter</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; ISAPI Filters</td>
+    </tr>
+    <tr>
+      <td><code>Web-Asp-Net45</code></td>
+      <td><strong>Roles</strong> &gt; Web Server (IIS) &gt; Web Server &gt; Application Development &gt; ASP.NET 4.5</td>
+    </tr>
+  </tbody>
+</table>
+
+</body>
+</html>
