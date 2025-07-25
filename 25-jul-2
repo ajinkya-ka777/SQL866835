@@ -1,0 +1,115 @@
+param (
+    [string]$ConfigPath = ".\config.json"
+)
+
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    Write-Output $logEntry
+    Add-Content -Path $config.LogFile -Value $logEntry
+}
+
+# --- Introduction ---
+$intro = @"
+==============================================================================
+WINDOWS SERVER ENVIRONMENT BOOTSTRAP SCRIPT
+
+This script will automate:
+ - Windows and IIS feature enablement
+ - Per-environment (DEV/TEST/PROD) folder access controls
+ - Copying of Venafi tools and scripts directories
+ - Setting system time zone to UTC
+Actions, results, and errors are logged in a logfile.
+==============================================================================
+"@
+Write-Host $intro
+
+# --- Load Config ---
+$config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
+
+# --- Initialize Logging ---
+if (Test-Path $config.LogFile) { Remove-Item $config.LogFile -Force }
+Write-Log "Script started."
+
+# --- Environment selection ---
+$envOptions = @("DEV", "TEST", "PROD")
+$envChoice = $null
+while ($envChoice -eq $null) {
+    $envChoice = Read-Host "Select environment (${($envOptions -join "/")})"
+    if ($envOptions -notcontains $envChoice.ToUpper()) {
+        Write-Host "Invalid input. Please select DEV, TEST, or PROD."
+        $envChoice = $null
+    }
+}
+$envChoice = $envChoice.ToUpper()
+Write-Log "Selected environment: $envChoice"
+
+# --- Step 1: Enable Windows/IIS Features ---
+Write-Log "Enabling Windows Features..."
+foreach ($feature in $config.WindowsFeatures) {
+    try {
+        Write-Host "Installing: $feature"
+        Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop | Out-Null
+        Write-Log "Installed feature: $feature"
+    } catch {
+        Write-Log "Failed to install $feature: $_" "ERROR"
+    }
+}
+
+# --- Step 2: Set Access Control on Shared Folder ---
+$folderPath = $config.Environments.$envChoice.AccessControl.SharedFolder
+if (-not (Test-Path $folderPath)) {
+    New-Item -ItemType Directory -Path $folderPath -Force | Out-Null
+    Write-Log "Created folder: $folderPath"
+}
+
+$acl = Get-Acl $folderPath
+foreach ($user in $config.Environments.$envChoice.AccessControl.Users) {
+    $right = switch ($user.AccessRight.ToLower()) {
+        "read"        { [System.Security.AccessControl.FileSystemRights]::Read }
+        "modify"      { [System.Security.AccessControl.FileSystemRights]::Modify }
+        "fullcontrol" { [System.Security.AccessControl.FileSystemRights]::FullControl }
+        default       { [System.Security.AccessControl.FileSystemRights]::Read }
+    }
+    $accessRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
+        $user.Account, $right, "ContainerInherit,ObjectInherit", "None", "Allow")
+    $acl.SetAccessRule($accessRule)
+    Write-Log "Set $($user.AccessRight) permission for $($user.Account) on $folderPath"
+}
+Set-Acl -Path $folderPath -AclObject $acl
+Write-Log "Permissions applied to $folderPath"
+
+# --- Step 3: Copy Venafi Tools ---
+$toolsDestination = $config.ToolsCopy.DestTools
+$toolsSource = $config.ToolsCopy.SourceTools
+if (-not (Test-Path $toolsDestination)) {
+    New-Item -ItemType Directory -Path $toolsDestination -Force | Out-Null
+    Write-Log "Created tools folder: $toolsDestination"
+}
+try {
+    Copy-Item -Path "$toolsSource\*" -Destination $toolsDestination -Recurse -Force
+    Write-Log "Copied tools from $toolsSource to $toolsDestination"
+} catch {
+    Write-Log "Failed to copy tools: $_" "ERROR"
+}
+
+# --- Step 4: Copy Scripts Folder ---
+try {
+    Copy-Item -Path "$($config.ScriptsCopy.SourcePath)\*" -Destination $config.ScriptsCopy.DestinationPath -Recurse -Force
+    Write-Log "Copied scripts from $($config.ScriptsCopy.SourcePath) to $($config.ScriptsCopy.DestinationPath)"
+} catch {
+    Write-Log "Failed to copy scripts: $_" "ERROR"
+}
+
+# --- Step 5: Set Time Zone ---
+try {
+    Set-TimeZone -Id $config.TimeZone
+    Write-Log "Time zone set to $($config.TimeZone)"
+} catch {
+    Write-Log "Failed to set time zone: $_" "ERROR"
+}
+
+# --- Wrap Up ---
+Write-Log "Script completed."
+Write-Host "All tasks completed. Check $($config.LogFile) for details."
