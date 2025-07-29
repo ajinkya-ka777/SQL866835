@@ -1,0 +1,74 @@
+{
+  "Environments": {
+    "DEV": {
+      "AccessControl": {
+        "SharedFolder": "C:\\DevShared",
+        "Users": [
+          { "Account": "ed\\devuser1", "AccessRight": "Read" },
+          { "Account": "ed\\devuser2", "AccessRight": "Modify" }
+        ],
+        "RemoveEveryone": true
+      }
+    },
+    "TEST": {
+      "AccessControl": {
+        "SharedFolder": "C:\\TestShared",
+        "Users": [
+          { "Account": "ed\\testuser1", "AccessRight": "Read" },
+          { "Account": "ed\\testuser2", "AccessRight": "FullControl" }
+        ],
+        "RemoveEveryone": true
+      }
+    },
+    "PROD": {
+      "AccessControl": {
+        "SharedFolder": "C:\\ProdShared",
+        "Users": [
+          { "Account": "ed\\ED_MS OU Admins", "AccessRight": "FullControl" },
+          { "Account": "ed\\sys_mtrpp1", "AccessRight": "FullControl" },
+          { "Account": "ed\\sys_mtrpp2", "AccessRight": "FullControl" },
+          { "Account": "ed\\sys_mtsrvcp1", "AccessRight": "Modify" },
+          { "Account": "ed\\sys_mtsrvcp2", "AccessRight": "Modify" },
+          { "Account": "ed\\sys_mtsyncp1", "AccessRight": "Modify" },
+          { "Account": "ed\\sys_mtsyncp2", "AccessRight": "Modify" },
+          { "Account": "ed\\sys_mtprgep1", "AccessRight": "Modify" },
+          { "Account": "ed\\sys_mtprgep2", "AccessRight": "Modify" }
+        ],
+        "RemoveEveryone": true
+      }
+    }
+  },
+  "WindowsFeatures": [
+    "Web-Server","Web-Common-Http","Web-Static-Content","Web-Default-Doc",
+    "Web-Http-Errors","Web-App-Dev","Web-Net-Ext45","Web-Asp-Net45",
+    "Web-ISAPI-Ext","Web-ISAPI-Filter","Web-Includes","Web-WebSockets",
+    "Web-Security","Web-Filtering","Web-Basic-Auth","Web-Windows-Auth",
+    "Web-Performance","Web-Stat-Compression","Web-FTP-Server",
+    "Web-FTP-Service","Web-FTP-Ext","Web-Mgmt-Tools","Web-Mgmt-Console",
+    "NET-Framework-Features","NET-Framework-45-Features","NET-WCF-Services45",
+    "NET-WCF-HTTP-Activation45","Telnet-Client","SNMP-Service"
+  ],
+  "ToolsCopy": {
+    "SourceTools": "C:\\Source\\VenafiTools",
+    "DestTools": "D:\\Tools"
+  },
+  "ScriptsCopy": {
+    "SourcePath": "D:\\Scripts",
+    "DestinationPath": "\\\\NewServer\\Scripts"
+  },
+  "TimeZone": "UTC",
+  "LogFile": "C:\\WindowsSetupScript.log",
+  ".NETFrameworkInstall": {
+    "InstallerPath": "D:\\Installers\\dotnetfx.exe",
+    "SilentArgs": "/quiet /norestart"
+  },
+  "WebRootTransfer": {
+    "Source": "\\\\OldServer\\inetpub\\wwwroot",
+    "Destination": "C:\\inetpub\\wwwroot",
+    "ExcludeFiles": ["Default.aspx", "Web.config"]
+  },
+  "WebDocsTransfer": {
+    "Source": "\\\\OldServer\\webdocs",
+    "Destination": "D:\\webdocs"
+  }
+}
