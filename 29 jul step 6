@@ -1,0 +1,103 @@
+# ===============================
+# === Step 6: IIS Hardening ====
+# ===============================
+
+Write-Log "Starting Step 6: IIS Configuration Tasks"
+
+# --- Subpoint a: Set FTP Data Channel Port Range ---
+try {
+    $ftpConfig = $config.IISSettings.FTPFirewall
+    $siteDefaultsPath = "system.applicationHost/sites"
+
+    Set-WebConfigurationProperty -Filter "$siteDefaultsPath/siteDefaults/ftpServer/firewallSupport" `
+                                -Name "lowDataChannelPort" `
+                                -Value $ftpConfig.DataChannelPortRangeLow -PSPath "IIS:\"
+
+    Set-WebConfigurationProperty -Filter "$siteDefaultsPath/siteDefaults/ftpServer/firewallSupport" `
+                                -Name "highDataChannelPort" `
+                                -Value $ftpConfig.DataChannelPortRangeHigh -PSPath "IIS:\"
+
+    Write-Log "✔ Set FTP Data Channel ports: $($ftpConfig.DataChannelPortRangeLow)–$($ftpConfig.DataChannelPortRangeHigh)"
+} catch {
+    Write-Log "Failed to configure FTP Data Channel ports: $_" "ERROR"
+}
+
+# --- Subpoint b: Add HTTP Response Headers ---
+try {
+    $headers = $config.IISSettings.HttpResponseHeaders
+    foreach ($header in $headers) {
+        Add-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' `
+            -filter "system.webServer/httpProtocol/customHeaders" `
+            -name "." -value @{ name = $header.Name; value = $header.Value }
+        Write-Log "✔ Added HTTP header: $($header.Name): $($header.Value)"
+    }
+} catch {
+    Write-Log "Failed to add HTTP response headers: $_" "ERROR"
+}
+
+# --- Subpoint c: Generate and Export MachineKey ---
+try {
+    if ($config.IISSettings.MachineKeys.KeyAutoGenerate) {
+        $validationKey    = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 64 | ForEach-Object {[char]$_})
+        $decryptionKey    = -join ((65..90) + (97..122) + (48..57) | Get-Random -Count 24 | ForEach-Object {[char]$_})
+        $validationMethod = $config.IISSettings.MachineKeys.Validation
+
+        $machineKeyXml = @"
+<machineKey
+    validationKey="$validationKey"
+    decryptionKey="$decryptionKey"
+    validation="$validationMethod"
+    decryption="AES"
+/>
+"@
+
+        $keyPath = $config.IISSettings.MachineKeys.ExportPath
+        $keyFolder = Split-Path $keyPath -Parent
+
+        if (-not (Test-Path $keyFolder)) {
+            New-Item -ItemType Directory -Path $keyFolder -Force | Out-Null
+        }
+
+        Set-Content -Path $keyPath -Value $machineKeyXml -Force
+        Write-Log "✔ MachineKey generated and saved to: $keyPath"
+    } else {
+        Write-Log "MachineKey generation skipped as KeyAutoGenerate = false"
+    }
+} catch {
+    Write-Log "Failed to generate/export MachineKey: $_" "ERROR"
+}
+
+# --- Subpoint d: Log Certificate Thumbprint ---
+try {
+    $certCfg = $config.CertificateLookup
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+        $certCfg.StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::$($certCfg.StoreLocation)
+    )
+    $store.Open("ReadOnly")
+
+    $cert = $store.Certificates | Where-Object { $_.Subject -like "*$($certCfg.SubjectName)*" } |
+            Sort-Object NotAfter -Descending | Select-Object -First 1
+
+    if ($cert) {
+        $thumb = $cert.Thumbprint
+        Write-Log "✔ Certificate found: $($cert.Subject)"
+        Write-Log "✔ Thumbprint: $thumb"
+
+        $thumbDest = $certCfg.ExportThumbprintTo
+        $thumbDir = Split-Path $thumbDest -Parent
+
+        if (-not (Test-Path $thumbDir)) {
+            New-Item -ItemType Directory -Path $thumbDir -Force | Out-Null
+        }
+
+        Set-Content -Path $thumbDest -Value $thumb -Force
+        Write-Log "✔ Thumbprint saved to: $thumbDest"
+    } else {
+        Write-Log "❌ Certificate \"$($certCfg.SubjectName)\" not found" "ERROR"
+    }
+
+    $store.Close()
+} catch {
+    Write-Log "Failed to retrieve certificate thumbprint: $_" "ERROR"
+}
