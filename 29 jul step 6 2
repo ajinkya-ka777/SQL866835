@@ -1,0 +1,21 @@
+"IISSettings": {
+  "FTPFirewall": {
+    "DataChannelPortRangeLow": 36000,
+    "DataChannelPortRangeHigh": 36200
+  },
+  "HttpResponseHeaders": [
+    { "Name": "X-Frame-Options", "Value": "SAMEORIGIN" },
+    { "Name": "X-Content-Type-Options", "Value": "nosniff" }
+  ],
+  "MachineKeys": {
+    "Validation": "HMACSHA512",
+    "KeyAutoGenerate": true,
+    "ExportPath": "C:\\WebFarmKeys\\machineKey.config"
+  }
+},
+"CertificateLookup": {
+  "StoreLocation": "LocalMachine",
+  "StoreName": "My",
+  "SubjectName": "CN=webserver.domain.com",
+  "ExportThumbprintTo": "C:\\WebCerts\\cert-thumbprint.txt"
+}
