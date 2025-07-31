@@ -1,29 +1,140 @@
-# --- Subpoint f: Enable Anonymous Authentication on Site ---
+# ===============================
+# === Step 6: IIS Hardening ====
+# ===============================
+
+Write-Log "----------- STEP 6: IIS CONFIGURATION START -----------"
+
+# --- 6a: Set FTP Data Channel Port Range ---
 try {
-    $authConfig = $config.IISSettings.Authentication
-    if ($authConfig.EnableAnonymous -eq $true) {
-        $authScope = $authConfig.Scope.ToLower()
-        $sitePath = "IIS:\Sites\$($config.IISSettings.SiteName)"
-
-        if ($authScope -eq "site" -and (Test-Path $sitePath)) {
-            $filter = "system.webServer/security/authentication/anonymousAuthentication"
-            $psPath = "IIS:\Sites\$($config.IISSettings.SiteName)"
-
-            Set-WebConfigurationProperty -Filter $filter `
-                                         -Name enabled `
-                                         -Value $true `
-                                         -PSPath "IIS:\Sites\$($config.IISSettings.SiteName)"
-            Write-Log "✔ Anonymous authentication enabled on site '$($config.IISSettings.SiteName)'"
-        } elseif ($authScope -eq "machine") {
-            Set-WebConfigurationProperty -Filter "system.webServer/security/authentication/anonymousAuthentication" `
-                                         -Name enabled -Value $true -PSPath "MACHINE/WEBROOT/APPHOST"
-            Write-Log "✔ Anonymous authentication enabled at machine level"
-        } else {
-            Write-Log "❌ Invalid auth scope or site not found." "ERROR"
-        }
-    } else {
-        Write-Log "Anonymous authentication setting skipped (EnableAnonymous = false)"
+    $ftpConfig = $config.IISSettings.FTPFirewall
+    if ($ftpConfig.Scope -eq 'Machine') {
+        $filterBase = "system.applicationHost/sites/siteDefaults/ftpServer/firewallSupport"
+        Set-WebConfigurationProperty -Filter $filterBase -Name "lowDataChannelPort"  -Value $ftpConfig.DataChannelPortRangeLow -PSPath "IIS:\"
+        Set-WebConfigurationProperty -Filter $filterBase -Name "highDataChannelPort" -Value $ftpConfig.DataChannelPortRangeHigh -PSPath "IIS:\"
+        Write-Log "✅ FTP port range set: $($ftpConfig.DataChannelPortRangeLow)–$($ftpConfig.DataChannelPortRangeHigh)"
     }
 } catch {
-    Write-Log "Failed to enable anonymous authentication: $_" "ERROR"
+    Write-Log "❌ Failed to set FTP firewall ports: $_" "ERROR"
 }
+
+# --- 6b: Add HTTP Response Headers ---
+try {
+    foreach ($header in $config.IISSettings.HttpResponseHeaders) {
+        $scope = $header.Scope.ToLower()
+        $filterPath = "system.webServer/httpProtocol/customHeaders"
+
+        if ($scope -eq "machine") {
+            $pspath = "MACHINE/WEBROOT/APPHOST"
+        } elseif ($scope -eq "site") {
+            $site = $config.IISSettings.SiteName
+            $pspath = "IIS:\Sites\$site"
+            if (-not (Test-Path $pspath)) {
+                Write-Log "❌ Site not found: $site" "ERROR"
+                continue
+            }
+        } else {
+            Write-Log "❌ Invalid scope '$scope' for header $($header.Name)" "ERROR"
+            continue
+        }
+
+        Add-WebConfigurationProperty -pspath $pspath `
+                                     -filter $filterPath `
+                                     -name "." `
+                                     -value @{ name = $header.Name; value = $header.Value }
+        Write-Log "✅ Header added: $($header.Name) = $($header.Value) at scope [$scope]"
+    }
+} catch {
+    Write-Log "❌ Failed to add HTTP headers: $_" "ERROR"
+}
+
+# --- 6c: Generate and export machineKey ---
+try {
+    $mk = $config.IISSettings.MachineKeys
+    if ($mk.KeyAutoGenerate) {
+        $validationKey = -join ((65..90)+(97..122)+(48..57) | Get-Random -Count 64 | ForEach-Object {[char]$_})
+        $decryptionKey = -join ((65..90)+(97..122)+(48..57) | Get-Random -Count 24 | ForEach-Object {[char]$_})
+
+        $xml = @"
+<machineKey
+    validationKey="$validationKey"
+    decryptionKey="$decryptionKey"
+    validation="$($mk.Validation)"
+    decryption="AES"
+/>
+"@
+
+        $exportPath = $mk.ExportPath
+        if (-not (Test-Path (Split-Path $exportPath -Parent))) {
+            New-Item -ItemType Directory -Path (Split-Path $exportPath -Parent) -Force | Out-Null
+        }
+
+        Set-Content -Path $exportPath -Value $xml -Force
+        Write-Log "✅ MachineKey saved to: $exportPath"
+    } else {
+        Write-Log "MachineKey auto-generation skipped (KeyAutoGenerate = false)"
+    }
+} catch {
+    Write-Log "❌ Failed to generate/export machineKey: $_" "ERROR"
+}
+
+# --- 6d: Retrieve Certificate Thumbprint ---
+try {
+    $certCfg = $config.CertificateLookup
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+        $certCfg.StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::$($certCfg.StoreLocation)
+    )
+    $store.Open("ReadOnly")
+    $cert = $store.Certificates | Where-Object { $_.Subject -like "*$($certCfg.SubjectName)*" } |
+            Sort-Object NotAfter -Descending | Select-Object -First 1
+
+    if ($cert) {
+        $thumb = $cert.Thumbprint
+        Write-Log "✅ Certificate found: $($cert.Subject)"
+        Write-Log "✅ Thumbprint: $thumb"
+
+        $targetFile = $certCfg.ExportThumbprintTo
+        if (-not (Test-Path (Split-Path $targetFile -Parent))) {
+            New-Item -ItemType Directory -Path (Split-Path $targetFile -Parent) -Force | Out-Null
+        }
+
+        Set-Content -Path $targetFile -Value $thumb -Force
+        Write-Log "✅ Thumbprint saved to: $targetFile"
+    } else {
+        Write-Log "❌ Certificate not found for subject '$($certCfg.SubjectName)'" "ERROR"
+    }
+
+    $store.Close()
+} catch {
+    Write-Log "❌ Failed to retrieve certificate thumbprint: $_" "ERROR"
+}
+
+# --- 6f: Enable Anonymous Authentication on site ---
+try {
+    $auth = $config.IISSettings.Authentication
+    if ($auth.EnableAnonymous -eq $true) {
+        if ($auth.Scope -eq "site") {
+            $siteName = $config.IISSettings.SiteName
+            $filter   = "system.webServer/security/authentication/anonymousAuthentication"
+            Set-WebConfigurationProperty -Filter $filter `
+                                         -Name "enabled" `
+                                         -Value $true `
+                                         -PSPath "IIS:\Sites\$siteName"
+            Write-Log "✅ Anonymous auth enabled on site: $siteName"
+        } elseif ($auth.Scope -eq "machine") {
+            Set-WebConfigurationProperty -Filter "system.webServer/security/authentication/anonymousAuthentication" `
+                                         -Name "enabled" `
+                                         -Value $true `
+                                         -PSPath "MACHINE/WEBROOT/APPHOST"
+            Write-Log "✅ Anonymous auth enabled on machine level"
+        } else {
+            Write-Log "❌ Invalid anonymity 'Scope' in config" "ERROR"
+        }
+    } else {
+        Write-Log "ℹ️ Anonymous auth not enabled (flag is false)"
+    }
+} catch {
+    Write-Log "❌ Failed to enable anonymous authentication: $_" "ERROR"
+}
+
+Write-Log "----------- STEP 6: IIS CONFIGURATION COMPLETE -----------"
