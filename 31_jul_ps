@@ -1,0 +1,29 @@
+# --- Subpoint f: Enable Anonymous Authentication on Site ---
+try {
+    $authConfig = $config.IISSettings.Authentication
+    if ($authConfig.EnableAnonymous -eq $true) {
+        $authScope = $authConfig.Scope.ToLower()
+        $sitePath = "IIS:\Sites\$($config.IISSettings.SiteName)"
+
+        if ($authScope -eq "site" -and (Test-Path $sitePath)) {
+            $filter = "system.webServer/security/authentication/anonymousAuthentication"
+            $psPath = "IIS:\Sites\$($config.IISSettings.SiteName)"
+
+            Set-WebConfigurationProperty -Filter $filter `
+                                         -Name enabled `
+                                         -Value $true `
+                                         -PSPath "IIS:\Sites\$($config.IISSettings.SiteName)"
+            Write-Log "✔ Anonymous authentication enabled on site '$($config.IISSettings.SiteName)'"
+        } elseif ($authScope -eq "machine") {
+            Set-WebConfigurationProperty -Filter "system.webServer/security/authentication/anonymousAuthentication" `
+                                         -Name enabled -Value $true -PSPath "MACHINE/WEBROOT/APPHOST"
+            Write-Log "✔ Anonymous authentication enabled at machine level"
+        } else {
+            Write-Log "❌ Invalid auth scope or site not found." "ERROR"
+        }
+    } else {
+        Write-Log "Anonymous authentication setting skipped (EnableAnonymous = false)"
+    }
+} catch {
+    Write-Log "Failed to enable anonymous authentication: $_" "ERROR"
+}
