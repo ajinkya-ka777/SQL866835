@@ -1,0 +1,24 @@
+"IISSettings": {
+  "Scope": "Site",                                  // NEW
+  "SiteName": "Default Web Site",                   // For site-level settings
+
+  "FTPFirewall": {
+    "Scope": "Machine",
+    "DataChannelPortRangeLow": 36000,
+    "DataChannelPortRangeHigh": 36200
+  },
+  "HttpResponseHeaders": [
+    { "Name": "X-Frame-Options", "Value": "SAMEORIGIN", "Scope": "Site" },
+    { "Name": "X-Content-Type-Options", "Value": "nosniff", "Scope": "Site" }
+  ],
+  "MachineKeys": {
+    "Scope": "Machine",
+    "Validation": "HMACSHA512",
+    "KeyAutoGenerate": true,
+    "ExportPath": "C:\\WebFarmKeys\\machineKey.config"
+  },
+  "Authentication": {
+    "Scope": "Site",
+    "EnableAnonymous": true
+  }
+}
