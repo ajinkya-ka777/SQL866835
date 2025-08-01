@@ -1,0 +1,4 @@
+"IISCommandFiltering": {
+  "Scope": "Machine",
+  "DenyCommands": [ "mtdm" ]
+}
