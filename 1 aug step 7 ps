@@ -1,0 +1,26 @@
+# ===============================
+# === Step 7: IIS Command Filter ====
+# ===============================
+
+Write-Log "----------- STEP 7: IIS COMMAND FILTER START -----------"
+
+try {
+    $cmdCfg = $config.IISCommandFiltering
+    if ($cmdCfg.Scope -eq "Machine" -and $cmdCfg.DenyCommands.Count -gt 0) {
+        foreach ($denyCmd in $cmdCfg.DenyCommands) {
+            # Add the command to the <requestFiltering><denyUrlSequences> or <verbs denied="true"> sections as required
+            # For WebDAV/FTP/IIS command filtering, typically use requestFiltering > hiddenSegments for HTTP(s)
+            Add-WebConfigurationProperty -pspath 'MACHINE/WEBROOT/APPHOST' `
+                -filter "system.webServer/security/requestFiltering/denyUrlSequences" `
+                -name "." `
+                -value @{ sequence = $denyCmd }
+            Write-Log "✅ Deny command added for: $denyCmd at machine level"
+        }
+    } else {
+        Write-Log "No deny commands specified or scope is not machine. Skipping Step 7."
+    }
+} catch {
+    Write-Log "❌ Failed to add deny command for mtdm: $_" "ERROR"
+}
+
+Write-Log "----------- STEP 7: IIS COMMAND FILTER COMPLETE -----------"
