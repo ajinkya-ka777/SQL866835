@@ -1,0 +1,106 @@
+{
+  "SupportedOS": [
+    "Microsoft Windows Server 2019 Datacenter",
+    "Microsoft Windows Server 2022 Datacenter"
+  ],
+  "LogFile": "C:\\WindowsSetupScript.log",
+  "TimeZone": "UTC",
+
+  "Environments": {
+    "DEV": {
+      "AccessControl": {
+        "SharedFolder": "C:\\DevShared",
+        "Users": [
+          { "Account": "ed\\devuser1", "AccessRight": "Read" },
+          { "Account": "ed\\devuser2", "AccessRight": "Modify" }
+        ],
+        "RemoveEveryone": true
+      }
+    },
+    "TEST": {
+      "AccessControl": {
+        "SharedFolder": "C:\\TestShared",
+        "Users": [
+          { "Account": "ed\\testuser1", "AccessRight": "Read" },
+          { "Account": "ed\\testuser2", "AccessRight": "FullControl" }
+        ],
+        "RemoveEveryone": true
+      }
+    },
+    "PROD": {
+      "AccessControl": {
+        "SharedFolder": "C:\\ProdShared",
+        "Users": [
+          { "Account": "ed\\ED_MS OU Admins", "AccessRight": "FullControl" },
+          { "Account": "ed\\sys_mtrpp1", "AccessRight": "FullControl" },
+          { "Account": "ed\\sys_mtrpp2", "AccessRight": "FullControl" }
+        ],
+        "RemoveEveryone": true
+      }
+    }
+  },
+
+  "WindowsFeatures": [
+    "Web-Server", "Web-Common-Http", "Web-Static-Content", "NET-Framework-Features"
+  ],
+
+  "ToolsCopy": {
+    "SourceTools": "C:\\Source\\VenafiTools",
+    "DestTools": "D:\\Tools"
+  },
+  "ScriptsCopy": {
+    "SourcePath": "D:\\Scripts",
+    "DestinationPath": "\\\\NewServer\\Scripts"
+  },
+
+  ".NETFrameworkInstall": {
+    "InstallerPath": "D:\\Installers\\dotnetfx.exe",
+    "SilentArgs": "/quiet /norestart"
+  },
+  "WebRootTransfer": {
+    "Source": "\\\\OldServer\\inetpub\\wwwroot",
+    "Destination": "C:\\inetpub\\wwwroot",
+    "ExcludeFiles": ["Default.aspx", "Web.config"]
+  },
+  "WebDocsTransfer": {
+    "Source": "\\\\OldServer\\webdocs",
+    "Destination": "D:\\webdocs"
+  },
+
+  "IISSettings": {
+    "Scope": "Site",
+    "SiteName": "Default Web Site",
+
+    "FTPFirewall": {
+      "Scope": "Machine",
+      "DataChannelPortRangeLow": 36000,
+      "DataChannelPortRangeHigh": 36200
+    },
+    "HttpResponseHeaders": [
+      { "Name": "X-Frame-Options", "Value": "SAMEORIGIN", "Scope": "Site" },
+      { "Name": "X-Content-Type-Options", "Value": "nosniff", "Scope": "Site" }
+    ],
+    "MachineKeys": {
+      "Scope": "Machine",
+      "Validation": "HMACSHA512",
+      "KeyAutoGenerate": true,
+      "ExportPath": "C:\\WebFarmKeys\\machineKey.config"
+    },
+    "Authentication": {
+      "Scope": "Site",
+      "EnableAnonymous": true
+    }
+  },
+
+  "CertificateLookup": {
+    "StoreLocation": "LocalMachine",
+    "StoreName": "My",
+    "SubjectName": "CN=webserver.domain.com",
+    "ExportThumbprintTo": "C:\\WebCerts\\cert-thumbprint.txt"
+  },
+
+  "IISCommandFiltering": {
+    "Scope": "Machine",
+    "DenyCommands": ["mtdm"]
+  }
+}
