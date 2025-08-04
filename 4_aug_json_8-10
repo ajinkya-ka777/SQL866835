@@ -1,0 +1,18 @@
+".NETFrameworkInstall": {
+  "Enabled": true,
+  "InstallerPath": "D:\\Installers\\dotnetfx.exe",
+  "SilentArgs": "/quiet /norestart"
+},
+
+"WebRootTransfer": {
+  "Enabled": true,
+  "Source": "\\\\OldServer\\inetpub\\wwwroot",
+  "Destination": "C:\\inetpub\\wwwroot",
+  "ExcludeFiles": ["Default.aspx", "Web.config"]
+},
+
+"WebDocsTransfer": {
+  "Enabled": true,
+  "Source": "\\\\OldServer\\webdocs",
+  "Destination": "D:\\webdocs"
+}
