@@ -1,0 +1,19 @@
+# === STEP 10: Copy webdocs Folder ===
+Write-Log "STEP 10: Copy \\webdocs data folder"
+$webDocs = $config.WebDocsTransfer
+if ($webDocs.Enabled -eq $true) {
+    try {
+        if (-not (Test-Path $webDocs.Destination)) {
+            New-Item -ItemType Directory -Path $webDocs.Destination -Force | Out-Null
+            Write-Log "Created destination for webdocs: $($webDocs.Destination)"
+        }
+
+        Copy-Item -Path "$($webDocs.Source)\*" -Destination $webDocs.Destination -Recurse -Force
+        Write-Log "✅ Copied contents from $($webDocs.Source) to $($webDocs.Destination)"
+    } catch {
+        Write-Log "❌ Failed WebDocs copy: $_" "ERROR"
+    }
+} else {
+    Write-Log "ℹ️ Step 10 skipped: WebDocsTransfer disabled in config."
+}
+Confirm-Continue
