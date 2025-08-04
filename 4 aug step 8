@@ -1,0 +1,23 @@
+# === STEP 8: Install .NET Framework from Installer ===
+Write-Log "STEP 8: .NET Framework Installation"
+
+$dotnet = $config.'.NETFrameworkInstall'
+if ($dotnet.Enabled -eq $true) {
+    # Check if .NET Framework already installed
+    $dotNetInstalled = Get-ItemProperty -Path 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full' -ErrorAction SilentlyContinue
+    if ($dotNetInstalled.Release -ge 393295) {
+        Write-Log "✔️ .NET Framework 4.6 or higher already installed. Skipping installation."
+    } elseif (Test-Path $dotnet.InstallerPath) {
+        try {
+            Start-Process -FilePath $dotnet.InstallerPath -ArgumentList $dotnet.SilentArgs -Wait -NoNewWindow
+            Write-Log "✅ .NET Framework installed from: $($dotnet.InstallerPath)"
+        } catch {
+            Write-Log "❌ Failed to install .NET Framework: $_" "ERROR"
+        }
+    } else {
+        Write-Log "❌ .NET installer not found at path: $($dotnet.InstallerPath)" "ERROR"
+    }
+} else {
+    Write-Log "ℹ️ Step 8 skipped: .NET Framework installation disabled in config."
+}
+Confirm-Continue
