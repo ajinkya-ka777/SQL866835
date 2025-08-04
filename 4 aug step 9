@@ -1,0 +1,28 @@
+# === STEP 9: WebRoot Transfer (FTP/Web) ===
+Write-Log "STEP 9: Copy inetpub\\wwwroot, excluding default files"
+$webRoot = $config.WebRootTransfer
+if ($webRoot.Enabled -eq $true) {
+    try {
+        $excludeList = $webRoot.ExcludeFiles
+        $filesToCopy = Get-ChildItem -Path $webRoot.Source -Recurse -File | Where-Object {
+            $excludeList -notcontains $_.Name
+        }
+
+        foreach ($file in $filesToCopy) {
+            $destPath = $file.FullName.Replace($webRoot.Source, $webRoot.Destination)
+            $destDir = Split-Path $destPath
+            if (-not (Test-Path $destDir)) {
+                New-Item -ItemType Directory -Path $destDir -Force | Out-Null
+            }
+            Copy-Item $file.FullName -Destination $destPath -Force
+            Write-Log "✔ Copied: $($file.Name) to $destPath"
+        }
+
+        Write-Log "✅ WebRoot files copied successfully."
+    } catch {
+        Write-Log "❌ Failed WebRoot copy: $_" "ERROR"
+    }
+} else {
+    Write-Log "ℹ️ Step 9 skipped: WebRootTransfer disabled in config."
+}
+Confirm-Continue
