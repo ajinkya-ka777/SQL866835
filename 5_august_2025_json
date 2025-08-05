@@ -1,0 +1,13 @@
+"SFTPSetup": {
+  "CopyEnabled": true,
+  "InstallServiceEnabled": true,
+  "SourcePath": "C:\\Source\\SFTP",
+  "DestinationPath": "C:\\Program Files\\MySFTP",
+  "Service": {
+    "Name": "MySftpService",
+    "ExePath": "C:\\Program Files\\MySFTP\\MySftpService.exe",
+    "DisplayName": "My SFTP Service",
+    "Description": "SFTP file receiver service",
+    "Startup": "Automatic"
+  }
+}
