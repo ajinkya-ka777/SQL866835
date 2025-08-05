@@ -11,3 +11,55 @@
     "Startup": "Automatic"
   }
 }
+
+# === STEP 11: SFTP FILE COPY + SERVICE INSTALL ===
+Write-Log "STEP 11: SFTP Setup – Copy files & install service"
+
+$sftp = $config.SFTPSetup
+
+# --- Copy SFTP Files ---
+if ($sftp.CopyEnabled -eq $true) {
+    try {
+        if (-not (Test-Path $sftp.DestinationPath)) {
+            New-Item -ItemType Directory -Path $sftp.DestinationPath -Force | Out-Null
+            Write-Log "✔ Created SFTP destination folder: $($sftp.DestinationPath)"
+        }
+        Copy-Item -Path "$($sftp.SourcePath)\*" -Destination $sftp.DestinationPath -Recurse -Force
+        Write-Log "✅ SFTP files copied from $($sftp.SourcePath) to $($sftp.DestinationPath)"
+    } catch {
+        Write-Log "❌ Failed to copy SFTP files: $_" "ERROR"
+    }
+} else {
+    Write-Log "ℹ️ Skipping SFTP file copy (CopyEnabled = false)"
+}
+
+Confirm-Continue
+
+# --- Install SFTP Service ---
+if ($sftp.InstallServiceEnabled -eq $true) {
+    try {
+        $svc = $sftp.Service
+        $serviceExists = Get-Service -Name $svc.Name -ErrorAction SilentlyContinue
+
+        if (-not $serviceExists) {
+            New-Service -Name $svc.Name `
+                        -BinaryPathName "`"$($svc.ExePath)`"" `
+                        -DisplayName $svc.DisplayName `
+                        -Description $svc.Description `
+                        -StartupType $svc.Startup
+
+            Write-Log "✅ Service '$($svc.Name)' created with EXE: $($svc.ExePath)"
+        } else {
+            Write-Log "ℹ️ Service '$($svc.Name)' already exists. Skipping creation."
+        }
+
+        Start-Service -Name $svc.Name
+        Write-Log "✅ Service '$($svc.Name)' started."
+    } catch {
+        Write-Log "❌ Failed to install or start SFTP service: $_" "ERROR"
+    }
+} else {
+    Write-Log "ℹ️ Skipping SFTP service install (InstallServiceEnabled = false)"
+}
+
+Confirm-Continue
