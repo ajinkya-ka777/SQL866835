@@ -1,0 +1,45 @@
+# --- Optional Resume Logic (after restart marker) ---
+$skipStep1 = $false
+if (Test-Path $script:LogFile) {
+    $logContent = Get-Content $script:LogFile
+    if ($logContent | Select-String "MARKER: RESTART_REQUIRED_AFTER_STEP_1") {
+        Write-Log "📌 Previous run triggered reboot after Step 1. Skipping Step 1 now."
+        $skipStep1 = $true
+    }
+}
+
+
+
+
+if (-not $skipStep1) {
+    # ===============================
+    # === STEP 1: Windows Features ===
+    # ===============================
+    Write-Log "STEP 1: Installing Windows Features..."
+
+    foreach ($feature in $config.WindowsFeatures) {
+        try {
+            $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
+
+            if (-not $alreadyInstalled) {
+                Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop | Out-Null
+                Write-Log "✅ Feature installed: $feature"
+            } else {
+                Write-Log "✔ Feature already present: $feature"
+            }
+        } catch {
+            Write-Log "❌ Failed to install feature '$feature': $_" "ERROR"
+        }
+    }
+
+    Write-Log "✅ Step 1 complete: All features processed."
+
+    # === Force Restart After Step 1 ===
+    Write-Log "🧨 Triggering system reboot now to finalize Windows feature installation."
+    Write-Log "💡 Please rerun this script after reboot to continue from Step 2."
+    Write-Log "MARKER: RESTART_REQUIRED_AFTER_STEP_1"
+
+    Start-Sleep -Seconds 5
+    Restart-Computer -Force
+    exit
+}
