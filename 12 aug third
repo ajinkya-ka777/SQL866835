@@ -1,0 +1,72 @@
+"DotNetAuthorizationRules": {
+  "Sites": [
+    {
+      "Name": "Default Web Site",
+      "Rules": [
+        { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
+        { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
+        { "AccessType": "Deny",  "Users": "All Users",  "EntryType": "Local" },
+        { "AccessType": "Allow", "Users": "All Users",  "EntryType": "Inherited" }
+      ]
+    },
+    {
+      "Name": "FTPaaS",
+      "Rules": [
+        { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
+        { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
+        { "AccessType": "Deny",  "Users": "All Users",  "EntryType": "Local" },
+        { "AccessType": "Allow", "Users": "All Users",  "EntryType": "Inherited" }
+      ]
+    }
+  ]
+}
+
+
+
+
+# === STEP XX: Configure .NET Authorization Rules for IIS Sites ===
+Write-Log "STEP XX: Configuring .NET Authorization Rules for sites (Default Website and FTPaaS)"
+
+function Set-DotNetAuthorizationRules {
+    param(
+        [string]$siteName,
+        [array]$rules
+    )
+
+    $psPath = "MACHINE/WEBROOT/APPHOST"
+    $filter = "system.web/authorization"
+
+    try {
+        # Clear existing rules for this site
+        Remove-WebConfiguration -Filter $filter -PSPath $psPath -Location $siteName -ErrorAction SilentlyContinue
+
+        foreach ($rule in $rules) {
+            # Map 'All Users' to IIS wildcards ("*")
+            $usersParam = ($rule.Users -eq "All Users") ? "*" : $rule.Users
+
+            Add-WebConfiguration -PSPath $psPath -Filter $filter -Location $siteName -Value @{
+                accessType = $rule.AccessType
+                users = $usersParam
+                # IIS does not directly set 'EntryType'; local and inherited are determined by config structure
+            }
+            Write-Log "Added .NET authorization rule: $($rule.AccessType) $($rule.Users) [$($rule.EntryType)] at site $siteName"
+        }
+    } catch {
+        Write-Log "Failed to set .NET authorization rules for site $siteName: $_" "ERROR"
+    }
+}
+
+$authConfig = $config.DotNetAuthorizationRules
+
+if ($authConfig -and $authConfig.Sites -and $authConfig.Sites.Count -gt 0) {
+    foreach ($site in $authConfig.Sites) {
+        $siteName = $site.Name
+        $rules = $site.Rules
+        Write-Log "Applying .NET authorization rules to site: $siteName"
+        Set-DotNetAuthorizationRules -siteName $siteName -rules $rules
+    }
+} else {
+    Write-Log "No .NET Authorization rules defined in config. Skipping this step."
+}
+
+Confirm-Continue
