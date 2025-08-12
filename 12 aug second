@@ -1,0 +1,51 @@
+# === STEP XX: Verify Certificate Hash & Thumbprint in Config File ===
+Write-Log "STEP XX: Checking config file for certificate hash and thumbprint..."
+
+$configFilePath = "C:\config\settings.conf"   # <-- UPDATE THIS TO ACTUAL FILE PATH
+
+# Get contents as lines
+if (Test-Path $configFilePath) {
+    $cfgLines = Get-Content $configFilePath
+
+    # Extract hash/thumbprint
+    $fileHash       = ($cfgLines | Where-Object { $_ -match "^hash=" })       -replace "hash=", ""
+    $fileThumbprint = ($cfgLines | Where-Object { $_ -match "^thumbprint=" }) -replace "thumbprint=", ""
+
+    # Get installed certificate thumbprint (previous code/source)
+    $certCfg = $config.CertificateLookup
+    $store = New-Object System.Security.Cryptography.X509Certificates.X509Store(
+        $certCfg.StoreName,
+        [System.Security.Cryptography.X509Certificates.StoreLocation]::$($certCfg.StoreLocation)
+    )
+    $store.Open("ReadOnly")
+    $cert = $store.Certificates | Where-Object { $_.Subject -like "*$($certCfg.SubjectName)*" } |
+            Sort-Object NotAfter -Descending | Select-Object -First 1
+
+    if ($cert) {
+        $actualThumbprint = $cert.Thumbprint
+        # Compare
+        $matchesThumb = $false
+        $matchesHash  = $false
+
+        if ($fileThumbprint -and $fileThumbprint.Trim() -ne "") {
+            $matchesThumb = ($fileThumbprint -replace "\s", "") -eq ($actualThumbprint -replace "\s", "")
+        }
+        # If using a hash value, compare (replace with real hash if known)
+        # $actualHash = ...; $matchesHash = ($fileHash -replace "\s", "") -eq ($actualHash -replace "\s", "")
+
+        Write-Log ("Thumbprint in config file: {0}" -f $fileThumbprint)
+        Write-Log ("Actual certificate thumbprint: {0}" -f $actualThumbprint)
+        if ($matchesThumb) {
+            Write-Log "✅ Config file contains correct certificate thumbprint."
+        } else {
+            Write-Log "❌ Config file does NOT match installed certificate thumbprint."
+        }
+        # If you use a hash value, also log hash comparison result here
+    } else {
+        Write-Log "❌ No certificate found during config check." "ERROR"
+    }
+    $store.Close()
+} else {
+    Write-Log "❌ Config file not found at path: $configFilePath" "ERROR"
+}
+Confirm-Continue
