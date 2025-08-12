@@ -22,7 +22,7 @@ foreach ($site in $config.DotNetAuthorizationRules.Sites) {
     $systemWeb = $xml.configuration.'system.web'
 
     # Remove existing <authorization> section
-    $null = $systemWeb.RemoveChild($systemWeb.authorization)
+    [void]$systemWeb.RemoveChild($systemWeb.authorization)
 
     # Create new <authorization>
     $auth = $xml.CreateElement("authorization")
@@ -30,9 +30,9 @@ foreach ($site in $config.DotNetAuthorizationRules.Sites) {
         if ($rule.EntryType -eq "Inherited") { continue }
         $r = $xml.CreateElement($rule.AccessType.ToLower()) # allow/deny
         $r.SetAttribute("users", $rule.Users)
-        $null = $auth.AppendChild($r)
+        [void]$auth.AppendChild($r)
     }
-    $null = $systemWeb.AppendChild($auth)
+    [void]$systemWeb.AppendChild($auth)
 
     # Save file
     $xml.Save($webConfigPath)
