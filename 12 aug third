@@ -1,72 +1,103 @@
-"DotNetAuthorizationRules": {
-  "Sites": [
-    {
-      "Name": "Default Web Site",
-      "Rules": [
-        { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
-        { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
-        { "AccessType": "Deny",  "Users": "All Users",  "EntryType": "Local" },
-        { "AccessType": "Allow", "Users": "All Users",  "EntryType": "Inherited" }
-      ]
-    },
-    {
-      "Name": "FTPaaS",
-      "Rules": [
-        { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
-        { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
-        { "AccessType": "Deny",  "Users": "All Users",  "EntryType": "Local" },
-        { "AccessType": "Allow", "Users": "All Users",  "EntryType": "Inherited" }
-      ]
-    }
-  ]
+{
+  "DotNetAuthorizationRules": {
+    "Sites": [
+      {
+        "Name": "Default Web Site",
+        "WebConfigPath": "C:\\inetpub\\wwwroot\\web.config",
+        "Rules": [
+          { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
+          { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
+          { "AccessType": "Deny",  "Users": "*",          "EntryType": "Local" },
+          { "AccessType": "Allow", "Users": "*",          "EntryType": "Inherited" }
+        ]
+      },
+      {
+        "Name": "FTPaaS",
+        "WebConfigPath": "C:\\inetpub\\ftp\\web.config",
+        "Rules": [
+          { "AccessType": "Allow", "Users": "test\\user1", "EntryType": "Local" },
+          { "AccessType": "Allow", "Users": "test\\user2", "EntryType": "Local" },
+          { "AccessType": "Deny",  "Users": "*",          "EntryType": "Local" },
+          { "AccessType": "Allow", "Users": "*",          "EntryType": "Inherited" }
+        ]
+      }
+    ]
+  }
 }
 
 
 
+param (
+    [string]$ConfigPath = ".\config.json"
+)
 
-# === STEP XX: Configure .NET Authorization Rules for IIS Sites ===
-Write-Log "STEP XX: Configuring .NET Authorization Rules for sites (Default Website and FTPaaS)"
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $logEntry = "[$timestamp] [$Level] $Message"
+    Write-Output $logEntry
+}
 
-function Set-DotNetAuthorizationRules {
-    param(
-        [string]$siteName,
-        [array]$rules
-    )
+# --- Load JSON config
+if (-not (Test-Path $ConfigPath)) {
+    Write-Log "❌ Config file not found: $ConfigPath" "ERROR"
+    exit 1
+}
+$config = Get-Content -Raw -Path $ConfigPath | ConvertFrom-Json
 
-    $psPath = "MACHINE/WEBROOT/APPHOST"
-    $filter = "system.web/authorization"
+# --- Step: Update .NET Authorization Rules in web.config ---
+foreach ($site in $config.DotNetAuthorizationRules.Sites) {
+    $webConfigPath = $site.WebConfigPath
+    Write-Log "Processing site '$($site.Name)' - Web.config: $webConfigPath"
+
+    if (-not (Test-Path $webConfigPath)) {
+        Write-Log "❌ web.config not found: $webConfigPath" "ERROR"
+        continue
+    }
 
     try {
-        # Clear existing rules for this site
-        Remove-WebConfiguration -Filter $filter -PSPath $psPath -Location $siteName -ErrorAction SilentlyContinue
+        [xml]$xml = Get-Content $webConfigPath
 
-        foreach ($rule in $rules) {
-            # Map 'All Users' to IIS wildcards ("*")
-            $usersParam = ($rule.Users -eq "All Users") ? "*" : $rule.Users
-
-            Add-WebConfiguration -PSPath $psPath -Filter $filter -Location $siteName -Value @{
-                accessType = $rule.AccessType
-                users = $usersParam
-                # IIS does not directly set 'EntryType'; local and inherited are determined by config structure
-            }
-            Write-Log "Added .NET authorization rule: $($rule.AccessType) $($rule.Users) [$($rule.EntryType)] at site $siteName"
+        # Ensure <configuration><system.web> exists
+        if (-not $xml.configuration) {
+            $xml.AppendChild($xml.CreateElement("configuration")) | Out-Null
         }
+        if (-not $xml.configuration.'system.web') {
+            $xml.configuration.AppendChild($xml.CreateElement("system.web")) | Out-Null
+        }
+
+        $systemWeb = $xml.configuration.'system.web'
+
+        # Remove existing <authorization> for 'Local' rules
+        $authNode = $systemWeb.authorization
+        if ($authNode) {
+            $systemWeb.RemoveChild($authNode) | Out-Null
+        }
+
+        # Create <authorization> node
+        $authElement = $xml.CreateElement("authorization")
+
+        foreach ($rule in $site.Rules) {
+            if ($rule.EntryType -eq "Inherited") {
+                # Inherited rules are from parent config; skip adding here
+                continue
+            }
+
+            # Create <allow> or <deny> element
+            $ruleElement = $xml.CreateElement($rule.AccessType.ToLower())
+            $ruleElement.SetAttribute("users", $rule.Users)
+            $authElement.AppendChild($ruleElement) | Out-Null
+        }
+
+        $systemWeb.AppendChild($authElement) | Out-Null
+
+        # Save updated web.config
+        $xml.Save($webConfigPath)
+        Write-Log "✅ Updated .NET authorization rules in $webConfigPath"
+
     } catch {
-        Write-Log "Failed to set .NET authorization rules for site $siteName: $_" "ERROR"
+        Write-Log "❌ Error updating authorization rules for $($site.Name): $_" "ERROR"
     }
 }
 
-$authConfig = $config.DotNetAuthorizationRules
-
-if ($authConfig -and $authConfig.Sites -and $authConfig.Sites.Count -gt 0) {
-    foreach ($site in $authConfig.Sites) {
-        $siteName = $site.Name
-        $rules = $site.Rules
-        Write-Log "Applying .NET authorization rules to site: $siteName"
-        Set-DotNetAuthorizationRules -siteName $siteName -rules $rules
-    }
-} else {
-    Write-Log "No .NET Authorization rules defined in config. Skipping this step."
-}
-
-Confirm-Continue
+Write-Log "All .NET Authorization rules applied successfully."
