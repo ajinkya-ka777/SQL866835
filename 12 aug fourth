@@ -1,0 +1,40 @@
+param (
+    [string]$ConfigPath = ".\config.json"
+)
+
+function Write-Log($msg) { Write-Output "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" }
+
+# Load config
+if (-not (Test-Path $ConfigPath)) { Write-Log "Config file missing"; exit 1 }
+$config = Get-Content -Raw $ConfigPath | ConvertFrom-Json
+
+foreach ($site in $config.DotNetAuthorizationRules.Sites) {
+    $webConfigPath = $site.WebConfigPath
+    Write-Log "Updating auth rules for $($site.Name) at $webConfigPath"
+
+    if (-not (Test-Path $webConfigPath)) {
+        Write-Log "web.config not found, skipping."
+        continue
+    }
+
+    # Load as XML
+    [xml]$xml = Get-Content $webConfigPath
+    $systemWeb = $xml.configuration.'system.web'
+
+    # Remove existing <authorization> section
+    $null = $systemWeb.RemoveChild($systemWeb.authorization)
+
+    # Create new <authorization>
+    $auth = $xml.CreateElement("authorization")
+    foreach ($rule in $site.Rules) {
+        if ($rule.EntryType -eq "Inherited") { continue }
+        $r = $xml.CreateElement($rule.AccessType.ToLower()) # allow/deny
+        $r.SetAttribute("users", $rule.Users)
+        $null = $auth.AppendChild($r)
+    }
+    $null = $systemWeb.AppendChild($auth)
+
+    # Save file
+    $xml.Save($webConfigPath)
+    Write-Log "✔ Rules updated"
+}
