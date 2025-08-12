@@ -2,16 +2,16 @@
   "Enabled": true,
   "LogDirectory": "D:\\logs\\iis",
   "LogFields": [
-    "Date", "Time", "ClientIP", "UserName", "SiteName", "ComputerName",
-    "ServerIP", "Method", "UriStem", "UriQuery", "HttpStatus", "Win32Status",
+    "Date", "Time", "ClientIp", "UserName", "SiteName", "ComputerName",
+    "ServerIp", "Method", "UriStem", "UriQuery", "HttpStatus", "Win32Status",
     "BytesSent", "BytesRecv", "TimeTaken", "ServerPort", "UserAgent", "Cookie",
     "Referer", "ProtocolVersion", "Host"
-  ]  // List all fields you want to log
+  ]
 }
 
 
-# === STEP XX: Configure IIS Logging at Server Level ===
-Write-Log "STEP XX: Configuring IIS logging (server level)"
+# === STEP XX: Configure IIS Logging (Server Level, Standard Fields Only) ===
+Write-Log "STEP XX: Configuring IIS logging at server level (W3C standard fields only)"
 
 $iisLog = $config.IISLogging
 if ($iisLog.Enabled -eq $true) {
@@ -19,31 +19,23 @@ if ($iisLog.Enabled -eq $true) {
         $sitePath = "MACHINE/WEBROOT/APPHOST"
         $logConfigPath = "system.applicationHost/sites/siteDefaults/logFile"
 
-        # Set log file directory
+        # Set log directory
         Set-WebConfigurationProperty -PSPath $sitePath `
-                                     -Filter $logConfigPath `
-                                     -Name directory `
-                                     -Value $iisLog.LogDirectory
+            -Filter $logConfigPath `
+            -Name directory `
+            -Value $iisLog.LogDirectory
 
-        # Set log fields (extended logging)
-        $logFields = $iisLog.LogFields
-        if ($logFields) {
-            # Remove any existing fields first (optional, to avoid duplicates)
-            Clear-WebConfiguration -PSPath $sitePath `
-                                   -Filter "system.applicationHost/sites/siteDefaults/logFile/customFields"
+        # Set standard W3C log fields
+        $fields = ($iisLog.LogFields -join ',')  # Comma-separated list
+        Set-WebConfigurationProperty -PSPath $sitePath `
+            -Filter $logConfigPath `
+            -Name logExtFileFlags `
+            -Value $fields
 
-            foreach ($field in $logFields) {
-                Add-WebConfigurationProperty -PSPath $sitePath `
-                                             -Filter "system.applicationHost/sites/siteDefaults/logFile/customFields" `
-                                             -Name "." `
-                                             -Value @{ logFieldName = $field; sourceName = $field; sourceType = "ServerVariable" }
-            }
-            Write-Log "✔ All log fields set for IIS server logging."
-        }
-
-        Write-Log "✅ IIS logging directory set to $($iisLog.LogDirectory)"
+        Write-Log "✅ IIS W3C log fields set: $fields"
+        Write-Log "✅ IIS log directory set to: $($iisLog.LogDirectory)"
     } catch {
-        Write-Log "❌ Failed to configure IIS logging at server level: $_" "ERROR"
+        Write-Log "❌ Failed to configure IIS logging: $_" "ERROR"
     }
 } else {
     Write-Log "ℹ️ Skipping IIS logging configuration (disabled in config)"
