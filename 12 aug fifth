@@ -1,0 +1,42 @@
+"ApiTest": {
+  "Enabled": true,
+  "Urls": [
+    "https://example.com/api/status",
+    "https://example.com/api/healthcheck",
+    "https://example.com/api/version"
+  ]
+}
+
+
+# === STEP XX: Test API access using system account login ===
+Write-Log "STEP XX: Testing API access with provided system account login"
+
+$apiTestCfg = $config.ApiTest
+if ($apiTestCfg.Enabled -eq $true) {
+    # Prompt user for login
+    $username = Read-Host "Enter the system account username"
+    $securePassword = Read-Host "Enter the password for $username" -AsSecureString
+    $credential = New-Object System.Management.Automation.PSCredential ($username, $securePassword)
+
+    foreach ($apiUrl in $apiTestCfg.Urls) {
+        Write-Log "Testing API: $apiUrl"
+
+        try {
+            # Invoke API with provided credentials
+            $response = Invoke-WebRequest -Uri $apiUrl -UseBasicParsing -Credential $credential -ErrorAction Stop
+
+            # Check if HTTP status code is in success range (200-299)
+            if ($response.StatusCode -ge 200 -and $response.StatusCode -lt 300) {
+                Write-Log "✅ API responded successfully ($($response.StatusCode)) - $apiUrl"
+            } else {
+                Write-Log "⚠ API responded with status code $($response.StatusCode) - $apiUrl" "WARNING"
+            }
+        } catch {
+            Write-Log "❌ API test failed for $apiUrl : $_" "ERROR"
+        }
+    }
+} else {
+    Write-Log "ℹ API testing step skipped (disabled in config)"
+}
+
+Confirm-Continue
