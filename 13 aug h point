@@ -1,0 +1,36 @@
+"FTPUserIsolation": {
+  "Enabled": true,
+  "BasePath": "C:\\Windows\\System32\\inetsrv",
+  "Mode": "Custom",
+  "Sites": [
+    "INTELPLAINFTP",
+    "SECUREFTP"
+  ]
+}
+
+# === STEP h: Set FTP User Isolation Mode via AppCmd ===
+Write-Log "STEP h: Setting FTP userIsolation.mode via AppCmd"
+
+$ftpIsoCfg = $config.FTPUserIsolation
+
+if ($ftpIsoCfg.Enabled -eq $true) {
+    $appCmdPath = Join-Path $ftpIsoCfg.BasePath "AppCmd.exe"
+    if (-not (Test-Path $appCmdPath)) {
+        Write-Log "❌ AppCmd.exe not found at $appCmdPath" "ERROR"
+    } else {
+        foreach ($siteName in $ftpIsoCfg.Sites) {
+            try {
+                Write-Log "Setting userIsolation.mode=$($ftpIsoCfg.Mode) for site '$siteName'"
+                $arguments = "set site `"$siteName`" /ftpServer.userIsolation.mode:$($ftpIsoCfg.Mode)"
+                Start-Process -FilePath $appCmdPath -ArgumentList $arguments -Wait -NoNewWindow
+                Write-Log "✅ Applied userIsolation.mode=$($ftpIsoCfg.Mode) to site '$siteName'"
+            } catch {
+                Write-Log "❌ Failed to set userIsolation mode for site '$siteName': $_" "ERROR"
+            }
+        }
+    }
+} else {
+    Write-Log "ℹ FTP User Isolation step skipped (disabled in config)."
+}
+
+Confirm-Continue
