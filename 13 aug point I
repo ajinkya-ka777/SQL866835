@@ -1,0 +1,62 @@
+"FTPLocalUserAuthReset": {
+  "Enabled": true,
+  "Sites": [
+    "SECUREFTP",
+    "INTELPLAINFTP"
+  ],
+  "ProviderName": "Intel FTP Local User Auth"
+}
+
+
+# === STEP i: Reset Local User Auth Provider in FTP Authentication ===
+Write-Log "STEP i: Disabling and re-enabling Local User Auth provider for selected FTP sites"
+
+$ftpAuthCfg = $config.FTPLocalUserAuthReset
+
+if ($ftpAuthCfg.Enabled -eq $true) {
+    foreach ($siteName in $ftpAuthCfg.Sites) {
+        try {
+            $providerName = $ftpAuthCfg.ProviderName
+            $psPath = "IIS:\Sites\$siteName"
+            $filter = "system.webServer/security/authentication/ftpAuthentication/providers"
+
+            # Get list of providers for this site
+            $currentProviders = Get-WebConfigurationProperty -PSPath "IIS:\" -Location $siteName -Filter $filter -Name "."
+
+            if (-not $currentProviders) {
+                Write-Log "No FTP providers found for site '$siteName', skipping." "WARNING"
+                continue
+            }
+
+            # Locate provider node
+            $providerNode = $currentProviders | Where-Object { $_.name -eq $providerName }
+            if (-not $providerNode) {
+                Write-Log "Provider '$providerName' not found for site '$siteName'." "WARNING"
+                continue
+            }
+
+            # Disable provider
+            Set-WebConfigurationProperty -PSPath "IIS:\" `
+                -Location $siteName `
+                -Filter "$filter/add[@name='$providerName']" `
+                -Name enabled `
+                -Value "false"
+            Write-Log "Disabled '$providerName' for site '$siteName'"
+
+            # Enable provider again
+            Set-WebConfigurationProperty -PSPath "IIS:\" `
+                -Location $siteName `
+                -Filter "$filter/add[@name='$providerName']" `
+                -Name enabled `
+                -Value "true"
+            Write-Log "✅ Re-enabled '$providerName' for site '$siteName'"
+
+        } catch {
+            Write-Log "❌ Failed to reset provider for site '$siteName': $_" "ERROR"
+        }
+    }
+} else {
+    Write-Log "ℹ FTP Local User Auth reset step skipped (disabled in config)."
+}
+
+Confirm-Continue
