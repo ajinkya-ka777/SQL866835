@@ -1,0 +1,35 @@
+# === STEP g: Register Custom FTP Provider at Machine Level ===
+Write-Log "STEP g: Registering Custom FTP Provider 'SecureFtp Home Directory' at machine level"
+
+try {
+    $machineLevelPath = "MACHINE/WEBROOT/APPHOST"
+    $customProvidersFilter = "system.applicationHost/configSections"  # Config section location for custom providers
+
+    # The actual location to add FTP authentication custom providers:
+    # Under: system.webServer/security/authentication/ftpAuthentication/providers
+
+    $ftpAuthProvidersPath = "system.webServer/security/authentication/ftpAuthentication/providers"
+
+    # Define custom provider properties
+    $providerName = "SecureFtp Home Directory"
+    $providerType = "FtpHomeDirectory.HomeDirectoryProvider, Intel.FileTransfer.LocalUserOnlyAuthentication, version=1.0.0.0, Culture=neutral, PublicKeyToken=3422"
+
+    # Check if provider already exists
+    $existingProviders = Get-WebConfigurationProperty -PSPath $machineLevelPath -Filter $ftpAuthProvidersPath -Name "." | Where-Object { $_.name -eq $providerName }
+
+    if ($existingProviders) {
+        Write-Log "Provider '$providerName' already exists at machine level. Skipping registration."
+    } else {
+        # Add the custom provider
+        Add-WebConfigurationProperty -PSPath $machineLevelPath `
+            -Filter $ftpAuthProvidersPath `
+            -Name "." `
+            -Value @{ name = $providerName; type = $providerType }
+        Write-Log "✅ Custom FTP Provider '$providerName' registered successfully."
+    }
+
+} catch {
+    Write-Log "❌ Failed to register custom FTP provider '$providerName' : $_" "ERROR"
+}
+
+Confirm-Continue
