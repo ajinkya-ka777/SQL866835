@@ -1,0 +1,112 @@
+$xmlPath = "C:\Windows\System32\inetsrv\config\applicationhost.xml"
+$sitesToCheck = @("SECUREFTP", "INTELPLAINFTP")
+
+function Write-Log($msg) { Write-Output "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') $msg" }
+
+# Backup first!
+Copy-Item $xmlPath "$xmlPath.bak-$(Get-Date -Format yyyyMMddHHmmss)" -Force
+
+[xml]$xml = Get-Content $xmlPath
+
+foreach ($siteName in $sitesToCheck) {
+    Write-Log "Processing site: $siteName"
+    # Find the <site name="...">
+    $siteNode = $xml.configuration.'system.applicationHost'.sites.site | Where-Object { $_.name -eq $siteName }
+    if (-not $siteNode) {
+        Write-Log "Site $siteName not found, skipping"
+        continue
+    }
+    $ftpServer = $siteNode.ftpServer
+    if (-not $ftpServer) {
+        Write-Log "No <ftpServer> element under site $siteName"
+        continue
+    }
+
+    # -- i/vi. <userIsolation mode="Custom" />
+    $userIsolation = $ftpServer.userIsolation
+    if ($userIsolation) {
+        $userIsolation.mode = "Custom"
+        Write-Log "Set <userIsolation mode='Custom'> for $siteName"
+    } else {
+        $userIsolationNode = $xml.CreateElement("userIsolation")
+        $userIsolationNode.SetAttribute("mode", "Custom")
+        [void]$ftpServer.AppendChild($userIsolationNode)
+        Write-Log "Added <userIsolation mode='Custom'> for $siteName"
+    }
+
+    # -- iii/vii. <customAuthentication> block
+    $customAuth = $ftpServer.customAuthentication
+    if ($customAuth) {
+        # Remove/rebuild providers for consistency
+        $providers = $customAuth.providers
+        if ($providers) { $customAuth.RemoveChild($providers) }
+        $provNode = $xml.CreateElement("providers")
+        $addNode = $xml.CreateElement("add")
+        $addNode.SetAttribute("name", "Intel FTP Local User Auth")
+        $addNode.SetAttribute("enabled", "true")
+        [void]$provNode.AppendChild($addNode)
+        [void]$customAuth.AppendChild($provNode)
+        Write-Log "Reset <customAuthentication> for $siteName"
+    } else {
+        $customAuthNode = $xml.CreateElement("customAuthentication")
+        $provNode = $xml.CreateElement("providers")
+        $addNode = $xml.CreateElement("add")
+        $addNode.SetAttribute("name", "Intel FTP Local User Auth")
+        $addNode.SetAttribute("enabled", "true")
+        [void]$provNode.AppendChild($addNode)
+        [void]$customAuthNode.AppendChild($provNode)
+        [void]$ftpServer.AppendChild($customAuthNode)
+        Write-Log "Added <customAuthentication> for $siteName"
+    }
+
+    # -- iv/viii. <customFeatures> block
+    $customFeatures = $ftpServer.customFeatures
+    if ($customFeatures) {
+        # Remove/rebuild providers
+        $providers = $customFeatures.providers
+        if ($providers) { $customFeatures.RemoveChild($providers) }
+        $provNode = $xml.CreateElement("providers")
+        $addNode1 = $xml.CreateElement("add")
+        $addNode1.SetAttribute("name", "Intel FTP Local User Auth")
+        $addNode1.SetAttribute("enabled", "true")
+        $addNode2 = $xml.CreateElement("add")
+        $addNode2.SetAttribute("name", "SecureFtp Home Directory")
+        $addNode2.SetAttribute("enabled", "true")
+        [void]$provNode.AppendChild($addNode1)
+        [void]$provNode.AppendChild($addNode2)
+        [void]$customFeatures.AppendChild($provNode)
+        Write-Log "Reset <customFeatures> for $siteName"
+    } else {
+        # Position after <logFile>, before </ftpServer>
+        $customFeaturesNode = $xml.CreateElement("customFeatures")
+        $provNode = $xml.CreateElement("providers")
+        $addNode1 = $xml.CreateElement("add")
+        $addNode1.SetAttribute("name", "Intel FTP Local User Auth")
+        $addNode1.SetAttribute("enabled", "true")
+        $addNode2 = $xml.CreateElement("add")
+        $addNode2.SetAttribute("name", "SecureFtp Home Directory")
+        $addNode2.SetAttribute("enabled", "true")
+        [void]$provNode.AppendChild($addNode1)
+        [void]$provNode.AppendChild($addNode2)
+        [void]$customFeaturesNode.AppendChild($provNode)
+        # Find <logFile>, insert after
+        $logFile = $ftpServer.logFile
+        if ($logFile) {
+            $nextSibling = $logFile.NextSibling
+            if ($nextSibling) {
+                $ftpServer.InsertBefore($customFeaturesNode, $nextSibling) | Out-Null
+            } else {
+                [void]$ftpServer.AppendChild($customFeaturesNode)
+            }
+            Write-Log "Inserted <customFeatures> after <logFile> for $siteName"
+        } else {
+            [void]$ftpServer.AppendChild($customFeaturesNode)
+            Write-Log "Appended <customFeatures> for $siteName (no <logFile> found)"
+        }
+    }
+}
+
+# Save changes
+$xml.Save($xmlPath)
+Write-Log "All requested changes applied."
+
