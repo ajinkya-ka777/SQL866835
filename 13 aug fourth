@@ -1,0 +1,47 @@
+# === STEP g: Register Custom FTP Provider ===
+Write-Log "STEP g: Registering Custom FTP Provider from config"
+
+$providerCfg = $config.FTPCustomProvider
+
+if ($providerCfg.Enabled -eq $true) {
+    try {
+        $psPath = if ($providerCfg.Scope -eq "Machine") {
+            "MACHINE/WEBROOT/APPHOST"
+        } else {
+            # If scope is 'Site', you could do IIS:\Sites\SiteName here
+            "MACHINE/WEBROOT/APPHOST"
+        }
+
+        $ftpAuthProvidersPath = "system.webServer/security/authentication/ftpAuthentication/providers"
+
+        # Check if provider already exists
+        $existing = Get-WebConfigurationProperty -PSPath $psPath -Filter $ftpAuthProvidersPath -Name "." |
+                    Where-Object { $_.name -eq $providerCfg.ProviderName }
+
+        if ($existing) {
+            Write-Log "ℹ Provider '$($providerCfg.ProviderName)' already exists — skipping registration."
+        } else {
+            Add-WebConfigurationProperty -PSPath $psPath `
+                -Filter $ftpAuthProvidersPath `
+                -Name "." `
+                -Value @{ name = $providerCfg.ProviderName; type = $providerCfg.ProviderType }
+
+            Write-Log "✅ Provider '$($providerCfg.ProviderName)' registered successfully."
+        }
+    }
+    catch {
+        Write-Log "❌ Failed to register FTP provider '$($providerCfg.ProviderName)': $_" "ERROR"
+    }
+} else {
+    Write-Log "ℹ FTP Custom Provider registration step skipped (disabled in config)."
+}
+
+Confirm-Continue
+
+
+"FTPCustomProvider": {
+  "Enabled": true,
+  "Scope": "Machine",
+  "ProviderName": "SecureFtp Home Directory",
+  "ProviderType": "FtpHomeDirectory.HomeDirectoryProvider, Intel.FileTransfer.LocalUserOnlyAuthentication, version=1.0.0.0, Culture=neutral, PublicKeyToken=3422"
+}
