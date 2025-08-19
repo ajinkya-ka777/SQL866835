@@ -1,0 +1,68 @@
+"ScriptExecution": {
+  "Enabled": true,
+  "Scripts": [
+    {
+      "Path": "D:\\temp\\deploy\\cleanup.ps1",
+      "Arguments": "-CleanupMode Full",
+      "RunAsAdmin": true
+    },
+    {
+      "Path": "D:\\temp\\deploy\\customstep.ps1",
+      "Arguments": "",
+      "RunAsAdmin": false
+    }
+  ]
+}
+
+
+# === STEP X: Execute PowerShell Scripts from config ===
+Write-Log "STEP X: Executing additional PowerShell scripts specified in config"
+
+$scriptExecCfg = $config.ScriptExecution
+
+if ($scriptExecCfg.Enabled -eq $true) {
+    foreach ($scriptEntry in $scriptExecCfg.Scripts) {
+        $scriptPath = $scriptEntry.Path
+        $scriptArgs = $scriptEntry.Arguments
+        $runAsAdmin = $scriptEntry.RunAsAdmin
+
+        if (-not (Test-Path $scriptPath)) {
+            Write-Log "❌ Script file not found: $scriptPath" "ERROR"
+            continue
+        }
+
+        Write-Log ("Executing script: {0} {1} [RunAsAdmin={2}]" -f $scriptPath, $scriptArgs, $runAsAdmin)
+
+        try {
+            if ($runAsAdmin) {
+                # Run with elevation
+                $psi = New-Object System.Diagnostics.ProcessStartInfo
+                $psi.FileName = "powershell.exe"
+                $psi.Arguments = "-ExecutionPolicy Bypass -File `"$scriptPath`" $scriptArgs"
+                $psi.Verb = "runas"
+                $psi.UseShellExecute = $true
+                $process = [System.Diagnostics.Process]::Start($psi)
+                $process.WaitForExit()
+                if ($process.ExitCode -eq 0) {
+                    Write-Log "✅ Script $scriptPath executed successfully (elevated)."
+                } else {
+                    Write-Log "❌ Script $scriptPath exited with code $($process.ExitCode)" "WARNING"
+                }
+            } else {
+                # Run in current context
+                $exitCode = powershell.exe -ExecutionPolicy Bypass -File $scriptPath $scriptArgs
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "✅ Script $scriptPath executed successfully."
+                } else {
+                    Write-Log "❌ Script $scriptPath exited with code $LASTEXITCODE" "WARNING"
+                }
+            }
+        } catch {
+            Write-Log "❌ Failed to execute script $scriptPath : $_" "ERROR"
+        }
+    }
+} else {
+    Write-Log "ℹ Script execution step skipped (disabled in config)"
+}
+
+Confirm-Continue
