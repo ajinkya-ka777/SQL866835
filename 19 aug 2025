@@ -1,0 +1,74 @@
+"FTPSslSettings": {
+  "Enabled": true,
+  "Sites": [
+    {
+      "Name": "SECUREFTP",
+      "Certificate": {
+        "StoreName": "My",
+        "StoreLocation": "LocalMachine",
+        "Thumbprint": "‎abc123def4567890ABCDEF1234567890ABCDEF12"
+      }
+    },
+    {
+      "Name": "INTELPLAINFTP",
+      "Certificate": {
+        "StoreName": "My",
+        "StoreLocation": "LocalMachine",
+        "Thumbprint": "‎9876543210FEDCBA9876543210ABCDEF12345678"
+      }
+    }
+  ]
+}
+
+
+
+# === STEP x: Configure FTP SSL Settings for Sites ===
+Write-Log "STEP x: Configuring FTP SSL certificate and SSL policy for sites"
+
+$ftpSslCfg = $config.FTPSslSettings
+
+if ($ftpSslCfg.Enabled -eq $true) {
+    foreach ($site in $ftpSslCfg.Sites) {
+        $siteName   = $site.Name
+        $thumbprint = ($site.Certificate.Thumbprint -replace '\s','').ToUpper()
+        $storeName  = $site.Certificate.StoreName
+        $storeLoc   = $site.Certificate.StoreLocation
+
+        Write-Log "Processing SSL for site: $siteName"
+
+        try {
+            # Load certificate from store
+            $store = New-Object System.Security.Cryptography.X509Certificates.X509Store($storeName, $storeLoc)
+            $store.Open("ReadOnly")
+            $cert = $store.Certificates | Where-Object { $_.Thumbprint -eq $thumbprint } | Select-Object -First 1
+            $store.Close()
+
+            if (-not $cert) {
+                Write-Log "❌ Certificate with thumbprint $thumbprint not found in $storeLoc\$storeName" "ERROR"
+                continue
+            }
+
+            Write-Log "✔ Found certificate: $($cert.Subject) [$thumbprint]"
+
+            # Assign certificate to FTP site SSL binding
+            $ftpSslPath = "system.applicationHost/sites/site[@name='$siteName']/ftpServer/security/ssl"
+
+            # Require SSL connections
+            Set-WebConfigurationProperty -Filter $ftpSslPath -PSPath "MACHINE/WEBROOT/APPHOST" -Name controlChannelPolicy -Value "SslRequire"
+            Set-WebConfigurationProperty -Filter $ftpSslPath -PSPath "MACHINE/WEBROOT/APPHOST" -Name dataChannelPolicy -Value "SslRequire"
+
+            # Bind certificate thumbprint
+            Set-WebConfigurationProperty -Filter $ftpSslPath -PSPath "MACHINE/WEBROOT/APPHOST" -Name serverCertHash -Value ([byte[]]($cert.GetCertHash()))
+            Set-WebConfigurationProperty -Filter $ftpSslPath -PSPath "MACHINE/WEBROOT/APPHOST" -Name serverCertStoreName -Value $storeName
+
+            Write-Log "✅ SSL Certificate applied and Require SSL set for site $siteName"
+
+        } catch {
+            Write-Log "❌ Failed to configure SSL for site $siteName: $_" "ERROR"
+        }
+    }
+} else {
+    Write-Log "ℹ FTP SSL configuration step skipped (disabled in config)"
+}
+
+Confirm-Continue
