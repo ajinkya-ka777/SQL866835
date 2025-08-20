@@ -1,0 +1,51 @@
+"BatchExecution": {
+  "Enabled": true,
+  "BatchFiles": [
+    "D:\\temp\\deploy\\install_bastion.bat",
+    "D:\\temp\\deploy\\install_mtransfer.bat"
+  ],
+  "CertHash": {
+    "DEV": "E1AB237239366F5B4321AFAE3A373A987654321A",
+    "PROD": "B8A30D75862376B8FCAAEE112233445566778899"
+  }
+}
+
+
+# For example, received earlier in the script:
+# $currentEnv = Read-Host "Enter deployment environment (DEV/PROD)"
+# OR loaded from config, or set by logic
+
+Write-Log "STEP X: Execute batch files with cert hash for environment '$currentEnv'"
+
+$batchCfg = $config.BatchExecution
+if ($batchCfg.Enabled -eq $true) {
+    $batchFiles = $batchCfg.BatchFiles
+    # Get cert hash for this environment
+    if (-not $batchCfg.CertHash.ContainsKey($currentEnv)) {
+        Write-Log "❌ No certificate hash configured for environment: $currentEnv" "ERROR"
+        return
+    }
+    $certHash = $batchCfg.CertHash[$currentEnv]
+    foreach ($batchFile in $batchFiles) {
+        if (-not (Test-Path $batchFile)) {
+            Write-Log "❌ Batch file not found: $batchFile" "ERROR"
+            continue
+        }
+        $cmdLine = "$batchFile $currentEnv $certHash"
+        Write-Log "Running: $cmdLine"
+        try {
+            $proc = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$cmdLine`"" -NoNewWindow -Wait -PassThru
+            if ($proc.ExitCode -eq 0) {
+                Write-Log "✅ $batchFile executed successfully for $currentEnv"
+            } else {
+                Write-Log "❌ $batchFile failed for $currentEnv [ExitCode: $($proc.ExitCode)]" "WARNING"
+            }
+        } catch {
+            Write-Log "❌ Failed to run $batchFile for $currentEnv: $_" "ERROR"
+        }
+    }
+} else {
+    Write-Log "ℹ Batch execution step skipped (disabled in config)"
+}
+
+Confirm-Continue
