@@ -1,0 +1,146 @@
+<# 
+Restore IIS config, ensure app pools, and import all site packages.
+Run as Administrator.
+#>
+
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ConfigBackupPath,               # Folder copied from source (contains ExportIISConfig or one/more backup sets)
+
+  [Parameter(Mandatory=$true)]
+  [string]$PackagesPath,                   # Folder containing all .zip site packages
+
+  [string]$EncryptPassword = $null,        # The encryptPassword used during export (if any)
+
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+function Ensure-Module {
+  param([string]$Name)
+  if (-not (Get-Module -ListAvailable -Name $Name)) { return $false }
+  Import-Module $Name -ErrorAction SilentlyContinue | Out-Null
+  return $true
+}
+
+function Restore-IISConfig {
+  param([string]$BackupRoot)
+
+  $exportDir = Join-Path $BackupRoot "ExportIISConfig"
+  $restored = $false
+
+  if (Test-Path $exportDir -PathType Container) {
+    if (Ensure-Module -Name IISAdministration) {
+      try {
+        Restore-IISConfiguration -PhysicalPath $exportDir -Force
+        Write-Host "Restored IIS configuration from ExportIISConfig."
+        $restored = $true
+      } catch {
+        Write-Warning "Restore-IISConfiguration failed: $($_.Exception.Message)"
+      }
+    } else {
+      Write-Warning "IISAdministration not available; skipping ExportIISConfig restore."
+    }
+  }
+
+  if (-not $restored) {
+    if (-not (Ensure-Module -Name WebAdministration)) {
+      throw "WebAdministration module not available."
+    }
+
+    # Accept a direct backup folder or a parent containing backup sets
+    $backupFolders = Get-ChildItem $BackupRoot -Directory -ErrorAction SilentlyContinue
+    if (-not $backupFolders -or $backupFolders.Count -eq 0) {
+      if ((Get-Item $BackupRoot).PSIsContainer) { $backupFolders = ,(Get-Item $BackupRoot) }
+    }
+    if (-not $backupFolders -or $backupFolders.Count -eq 0) { throw "No IIS backup folders found at $BackupRoot" }
+
+    $selected = $backupFolders | Select-Object -First 1
+    $backupName = $selected.Name
+
+    $iisBackupRoot = "C:\Windows\System32\inetsrv\backup"
+    if (-not (Test-Path $iisBackupRoot)) { New-Item -ItemType Directory -Force -Path $iisBackupRoot | Out-Null }
+    Copy-Item $selected.FullName -Destination $iisBackupRoot -Recurse -Force
+
+    Restore-WebConfiguration -Name $backupName
+    Write-Host "Restored WebAdministration backup set: $backupName"
+  }
+}
+
+function Ensure-AppPoolsFromPackages {
+  param([string]$PkgFolder)
+
+  if (-not (Ensure-Module -Name WebAdministration)) {
+    throw "WebAdministration module not available."
+  }
+
+  # Find app pool names referenced inside apphost.config fragments within packages
+  $pkgs = Get-ChildItem -Path $PkgFolder -Filter *.zip -File
+  foreach ($pkg in $pkgs) {
+    # Expand the package manifest into memory to look for appHostConfig; avoiding full extract
+    # Fallback: quick extract of parameter/manifest files to temp
+    $temp = Join-Path $env:TEMP ("PkgInspect_" + [IO.Path]::GetFileNameWithoutExtension($pkg.Name) + "_" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $temp | Out-Null
+    try {
+      Add-Type -AssemblyName System.IO.Compression.FileSystem
+      [System.IO.Compression.ZipFile]::ExtractToDirectory($pkg.FullName, $temp)
+
+      # Common locations: parameters.xml, archive.xml, systemInfo.xml, and appHostConfig under archive/
+      $xmlFiles = Get-ChildItem $temp -Recurse -Include *.xml -ErrorAction SilentlyContinue
+      $pools = @()
+      foreach ($xf in $xmlFiles) {
+        try {
+          $x = [xml](Get-Content -Path $xf.FullName -Raw)
+        } catch { continue }
+
+        # Heuristic: look for processModel/@identityType or appPool/@name in apphost fragments
+        $pools += ($x.SelectNodes("//*[@appPool]") | ForEach-Object { $_.appPool }) | Where-Object { $_ }
+        $pools += ($x.SelectNodes("//add[@name and ../@path='AppPools']") | ForEach-Object { $_.name }) | Where-Object { $_ }
+        $pools += ($x.SelectNodes("//application[@applicationPool]") | ForEach-Object { $_.applicationPool }) | Where-Object { $_ }
+      }
+      $pools = $pools | Where-Object { $_ -and $_.ToString().Trim() -ne "" } | Sort-Object -Unique
+
+      foreach ($pool in $pools) {
+        $poolPath = "IIS:\AppPools\$pool"
+        if (-not (Test-Path $poolPath)) {
+          New-WebAppPool -Name $pool | Out-Null
+          # Basic defaults; adjust as needed later
+          Set-ItemProperty -Path $poolPath -Name managedRuntimeVersion -Value "v4.0" -ErrorAction SilentlyContinue
+          Write-Host "Created missing app pool: $pool"
+        }
+      }
+    } finally {
+      Remove-Item $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+  }
+}
+
+function Import-Packages {
+  param(
+    [string]$PkgFolder,
+    [string]$EncryptPassword,
+    [string]$MsDeployPath
+  )
+
+  if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+  $pkgs = Get-ChildItem -Path $PkgFolder -Filter *.zip -File
+  foreach ($pkg in $pkgs) {
+    $log = "$($pkg.FullName).import.log"
+    $src = if ($EncryptPassword) { "-source:package=`"$($pkg.FullName)`",encryptPassword=`"$EncryptPassword`"" }
+           else { "-source:package=`"$($pkg.FullName)`"" }
+
+    & "$MsDeployPath" `
+      -verb:sync `
+      $src `
+      "-dest:apphostconfig=`"Default Web Site`"" `
+      "-enableRule:DoNotDeleteRule" `
+      2>&1 | Tee-Object -FilePath $log
+
+    Write-Host "Imported package: $($pkg.Name)"
+  }
+}
+
+# Execution
+Restore-IISConfig -BackupRoot $ConfigBackupPath   # Step 1: restore IIS config [7]
+Ensure-AppPoolsFromPackages -PkgFolder $PackagesPath  # Step 2: create any missing app pools referenced by packages [2]
+Import-Packages -PkgFolder $PackagesPath -EncryptPassword $EncryptPassword -MsDeployPath $MsDeployPath  # Step 3: import packages [14]
