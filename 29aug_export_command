@@ -1,0 +1,64 @@
+<# 
+Export IIS sites to MSDeploy packages (with encryption) and back up full IIS config.
+
+Requirements:
+- Web Deploy (msdeploy.exe)
+- Run as Administrator
+#>
+
+param(
+  [string]$OutputRoot = "C:\Backups\IIS",
+  [string]$EncryptPassword = "StrongP@ss!",
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$sitePkgDir = Join-Path $OutputRoot "SitePackages\$timestamp"
+$configDir  = Join-Path $OutputRoot "IISConfig\$timestamp"
+New-Item -ItemType Directory -Force -Path $sitePkgDir, $configDir | Out-Null
+
+if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+Import-Module WebAdministration -ErrorAction Stop
+
+# Package each site config; include encryptPassword to archive secure properties
+$sites = Get-ChildItem IIS:\Sites
+foreach ($s in $sites) {
+  $safeName = ($s.Name -replace '[^\w\-\.]', '_')
+  $pkgPath  = Join-Path $sitePkgDir "$safeName.zip"
+  $logPath  = Join-Path $sitePkgDir "$safeName.export.log"
+
+  & "$MsDeployPath" `
+    -verb:sync `
+    "-source:apphostconfig=`"$($s.Name)`"" `
+    "-dest:package=`"$pkgPath`",encryptPassword=`"$EncryptPassword`"" `
+    "-enableRule:DoNotDeleteRule" `
+    "-disableLink:AppPoolExtension" `
+    "-disableLink:ContentExtension" `
+    "-disableLink:Certificate" `
+    2>&1 | Tee-Object -FilePath $logPath
+}
+
+# Full IIS configuration backup
+$exported = $false
+if (Get-Module -ListAvailable -Name IISAdministration) {
+  try {
+    Import-Module IISAdministration -ErrorAction Stop
+    $phys = Join-Path $configDir "ExportIISConfig"
+    New-Item -ItemType Directory -Force -Path $phys | Out-Null
+    $keyPwd = ConvertTo-SecureString -AsPlainText -String $EncryptPassword -Force
+    # Use documented parameter (-PhysicalPath) for maximum compatibility
+    Export-IISConfiguration -PhysicalPath $phys -KeyEncryptionPassword $keyPwd -Force
+    $exported = $true
+  } catch {
+    Write-Warning "Export-IISConfiguration failed or unavailable. Falling back to Backup-WebConfiguration."
+  }
+}
+
+if (-not $exported) {
+  $backupName = "IISBackup-$timestamp"
+  Backup-WebConfiguration -Name $backupName
+  Copy-Item "C:\Windows\System32\inetsrv\backup\$backupName" -Destination $configDir -Recurse -Force
+}
+
+Write-Host "Export complete. Packages: $sitePkgDir  |  Config backup: $configDir"
