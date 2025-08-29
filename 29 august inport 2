@@ -1,0 +1,75 @@
+param(
+  [Parameter(Mandatory=$true)]
+  [string]$ConfigBackupPath,
+  [string]$PackagesPath = $null,
+  [string]$EncryptPassword = $null,   # set if packages were exported with encryption
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+# 1) Restore IIS configuration
+$exportDir = Join-Path $ConfigBackupPath "ExportIISConfig"
+$restored = $false
+
+if (Test-Path $exportDir -PathType Container) {
+  if (Get-Module -ListAvailable -Name IISAdministration) {
+    Import-Module IISAdministration -ErrorAction SilentlyContinue
+    try {
+      Restore-IISConfiguration -PhysicalPath $exportDir -Force
+      Write-Host "Restored IIS configuration from ExportIISConfig."
+      $restored = $true
+    } catch {
+      Write-Warning "Restore-IISConfiguration failed: $($_.Exception.Message)"
+    }
+  } else {
+    Write-Warning "IISAdministration not available; skipping ExportIISConfig restore."
+  }
+}
+
+if (-not $restored) {
+  Import-Module WebAdministration -ErrorAction Stop
+
+  # Detect backup folder(s)
+  $backupFolders = Get-ChildItem $ConfigBackupPath | Where-Object { $_.PSIsContainer }
+  if (-not $backupFolders -or $backupFolders.Count -eq 0) {
+    # Allow path that directly points to a single backup folder
+    if ((Get-Item $ConfigBackupPath).PSIsContainer) { $backupFolders = ,(Get-Item $ConfigBackupPath) }
+  }
+  if (-not $backupFolders -or $backupFolders.Count -eq 0) { throw "No IIS backup folders found at $ConfigBackupPath" }
+
+  $selected = $backupFolders | Select-Object -First 1
+  $backupName = $selected.Name
+
+  $iisBackupRoot = "C:\Windows\System32\inetsrv\backup"
+  if (-not (Test-Path $iisBackupRoot)) { New-Item -ItemType Directory -Force -Path $iisBackupRoot | Out-Null }
+  Copy-Item $selected.FullName -Destination $iisBackupRoot -Recurse -Force
+
+  Restore-WebConfiguration -Name $backupName
+  Write-Host "Restored WebAdministration backup set: $backupName"
+}
+
+# 2) Optionally import any site packages via Web Deploy
+if ($PackagesPath) {
+  if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+  Get-ChildItem -Path $PackagesPath -Filter *.zip | ForEach-Object {
+    $pkg = $_.FullName
+    $log = "$pkg.import.log"
+
+    $src = if ($EncryptPassword) { "-source:package=`"$pkg`",encryptPassword=`"$EncryptPassword`"" }
+           else { "-source:package=`"$pkg`"" }
+
+    & "$MsDeployPath" `
+      -verb:sync `
+      $src `
+      "-dest:apphostconfig=`"Default Web Site`"" `
+      "-enableRule:DoNotDeleteRule" `
+      "-disableLink:AppPoolExtension" `
+      "-disableLink:ContentExtension" `
+      "-disableLink:Certificate" `
+      2>&1 | Tee-Object -FilePath $log
+
+    Write-Host "Imported package: $pkg"
+  }
+}
+
+Write-Host "Restore complete."
