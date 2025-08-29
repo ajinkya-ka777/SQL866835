@@ -1,0 +1,63 @@
+<# 
+Import IIS site packages and optionally restore full IIS configuration.
+
+Requirements:
+- Web Deploy (msdeploy.exe)
+- Run as Administrator
+#>
+
+param(
+  [string]$PackagesPath,
+  [string]$ConfigBackupPath = $null,
+  [string]$EncryptPassword = "StrongP@ss!",
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+# Optional: restore full IIS configuration first
+if ($ConfigBackupPath) {
+  $exportDir = Join-Path $ConfigBackupPath "ExportIISConfig"
+  if (Test-Path $exportDir -PathType Container) {
+    if (Get-Module -ListAvailable -Name IISAdministration) {
+      Import-Module IISAdministration -ErrorAction SilentlyContinue
+      try {
+        # IISAdministration restore
+        Restore-IISConfiguration -PhysicalPath $exportDir -Force
+      } catch {
+        Write-Warning "Restore-IISConfiguration failed; consider manual review of config."
+      }
+    } else {
+      Write-Warning "IISAdministration not available to restore ExportIISConfig."
+    }
+  } else {
+    # WebAdministration restore
+    Import-Module WebAdministration -ErrorAction SilentlyContinue
+    $backupSet = Get-ChildItem $ConfigBackupPath | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+    if ($backupSet) {
+      $name = $backupSet.Name
+      $dest = "C:\Windows\System32\inetsrv\backup\$name"
+      if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+      Copy-Item (Join-Path $ConfigBackupPath $name) -Destination "C:\Windows\System32\inetsrv\backup\" -Recurse -Force
+      Restore-WebConfiguration -Name $name
+    }
+  }
+}
+
+# Import site packages (supply the same encryptPassword)
+Get-ChildItem -Path $PackagesPath -Filter *.zip | ForEach-Object {
+  $pkg = $_.FullName
+  $log = "$pkg.import.log"
+
+  & "$MsDeployPath" `
+    -verb:sync `
+    "-source:package=`"$pkg`",encryptPassword=`"$EncryptPassword`"" `
+    "-dest:apphostconfig=`"Default Web Site`"" `
+    "-enableRule:DoNotDeleteRule" `
+    "-disableLink:AppPoolExtension" `
+    "-disableLink:ContentExtension" `
+    "-disableLink:Certificate" `
+    2>&1 | Tee-Object -FilePath $log
+}
+
+Write-Host "Import complete from: $PackagesPath"
