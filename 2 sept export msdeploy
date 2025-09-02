@@ -1,0 +1,41 @@
+<# 
+Export IIS sites as MSDeploy packages and back up IIS configuration.
+Run as Administrator.
+#>
+
+param(
+  [string]$OutputRoot = "C:\Backups\IIS",
+  [string]$EncryptPassword = "StrongP@ss!",
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+$timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+$sitePkgDir = Join-Path $OutputRoot "SitePackages\$timestamp"
+$configDir  = Join-Path $OutputRoot "IISConfig\$timestamp"
+New-Item -ItemType Directory -Force -Path $sitePkgDir, $configDir | Out-Null
+
+if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+Import-Module WebAdministration -ErrorAction Stop
+$sites = Get-ChildItem IIS:\Sites
+
+foreach ($s in $sites) {
+  $safeName = ($s.Name -replace '[^\w\-\.]', '_')
+  $pkgPath  = Join-Path $sitePkgDir "$safeName.zip"
+  $logPath  = Join-Path $sitePkgDir "$safeName.export.log"
+
+  # Only standard config is exported, not backup plugin sections
+  & "$MsDeployPath" `
+    -verb:sync `
+    "-source:apphostconfig=`"$($s.Name)`"" `
+    "-dest:package=`"$pkgPath`",encryptPassword=`"$EncryptPassword`"" `
+    "-enableRule:DoNotDeleteRule" `
+    2>&1 | Tee-Object -FilePath $logPath
+}
+
+# Back up IIS config without using wdeploy plugin
+$backupName = "IISBackup-$timestamp"
+Backup-WebConfiguration -Name $backupName
+Copy-Item "C:\Windows\System32\inetsrv\backup\$backupName" -Destination $configDir -Recurse -Force
+
+Write-Host "Export complete. Site packages: $sitePkgDir | Config backup: $configDir"
