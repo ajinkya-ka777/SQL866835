@@ -1,0 +1,42 @@
+<# 
+Import IIS site packages and restore IIS configuration.
+Run as Administrator.
+#>
+
+param(
+  [string]$PackagesPath,
+  [string]$ConfigBackupPath,
+  [string]$EncryptPassword = "StrongP@ss!",
+  [string]$MsDeployPath = "C:\Program Files\IIS\Microsoft Web Deploy V3\msdeploy.exe"
+)
+
+if (-not (Test-Path $MsDeployPath)) { throw "msdeploy.exe not found at: $MsDeployPath" }
+
+# Restore full IIS configuration from backup
+if ($ConfigBackupPath) {
+  Import-Module WebAdministration -ErrorAction Stop
+  $backupSet = Get-ChildItem $ConfigBackupPath | Where-Object { $_.PSIsContainer } | Select-Object -First 1
+  if ($backupSet) {
+    $name = $backupSet.Name
+    $dest = "C:\Windows\System32\inetsrv\backup\$name"
+    if (-not (Test-Path $dest)) { New-Item -ItemType Directory -Force -Path $dest | Out-Null }
+    Copy-Item (Join-Path $ConfigBackupPath $name) -Destination "C:\Windows\System32\inetsrv\backup\" -Recurse -Force
+    Restore-WebConfiguration -Name $name
+    Write-Host "Restored IIS configuration backup: $name"
+  }
+}
+
+# Import all site packages with correct password
+Get-ChildItem -Path $PackagesPath -Filter *.zip | ForEach-Object {
+  $pkg = $_.FullName
+  $log = "$pkg.import.log"
+
+  & "$MsDeployPath" `
+    -verb:sync `
+    "-source:package=`"$pkg`",encryptPassword=`"$EncryptPassword`"" `
+    "-dest:auto" `
+    "-enableRule:DoNotDeleteRule" `
+    2>&1 | Tee-Object -FilePath $log
+}
+
+Write-Host "Import complete from: $PackagesPath"
