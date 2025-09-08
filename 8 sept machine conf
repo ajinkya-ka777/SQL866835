@@ -1,0 +1,60 @@
+"MachineConfigAppSettings": {
+  "Enabled": true,
+  "ConfigPath": "C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\Config\\machine.config",
+  "Settings": [
+    {
+      "Key": "FTP_LOCALUSER_REPO_PATH",
+      "Value": "\\\\fm.cps.com\\ftprepo"
+    },
+    {
+      "Key": "EXAMPLE_KEY",
+      "Value": "ExampleValue"
+    }
+  ]
+}
+
+# === STEP: Update machine.config appSettings from config ===
+
+# Example: load config from file
+# $config = Get-Content -Raw -Path ".\config.json" | ConvertFrom-Json
+
+$mcCfg = $config.MachineConfigAppSettings
+
+if ($mcCfg.Enabled -eq $true) {
+    $machineConfigPath = $mcCfg.ConfigPath
+
+    # Backup before editing
+    $backupPath = "$machineConfigPath.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+    Copy-Item $machineConfigPath $backupPath -Force
+
+    [xml]$xml = Get-Content $machineConfigPath
+
+    # Ensure <appSettings> node exists
+    $appSettings = $xml.configuration.appSettings
+    if (-not $appSettings) {
+        $appSettings = $xml.CreateElement("appSettings")
+        [void]$xml.configuration.AppendChild($appSettings)
+    }
+
+    foreach ($setting in $mcCfg.Settings) {
+        $key   = $setting.Key
+        $value = $setting.Value
+
+        $existingNode = $appSettings.SelectSingleNode("add[@key='$key']")
+        if ($existingNode) {
+            $existingNode.SetAttribute("value", $value)
+            Write-Output "Updated key '$key' in appSettings."
+        } else {
+            $addNode = $xml.CreateElement("add")
+            $addNode.SetAttribute("key", $key)
+            $addNode.SetAttribute("value", $value)
+            [void]$appSettings.AppendChild($addNode)
+            Write-Output "Added new key '$key' to appSettings."
+        }
+    }
+
+    $xml.Save($machineConfigPath)
+    Write-Output "machine.config updated successfully."
+} else {
+    Write-Output "MachineConfig appSettings update step skipped (disabled in config)."
+}
