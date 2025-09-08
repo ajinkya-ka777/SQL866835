@@ -1,0 +1,54 @@
+"FtpServiceCertSetting": {
+  "Enabled": true,
+  "ConfigPath": "C:\\Intel\\FtPservice.exe.config",
+  "Key": "CERT_THUMBPRINT",
+  "Value": "E1AB237239366F5B4321AFAE3A373A987654321A"
+}
+
+# === STEP: Check and Update FtPservice.exe.config with cert hash ===
+
+$ftpCertCfg = $config.FtpServiceCertSetting
+
+if ($ftpCertCfg.Enabled -eq $true) {
+    $filePath = $ftpCertCfg.ConfigPath
+    $key      = $ftpCertCfg.Key
+    $value    = ($ftpCertCfg.Value -replace '\s', '').ToUpper()
+
+    if (-not (Test-Path $filePath)) {
+        Write-Output "❌ File not found: $filePath"
+        return
+    }
+
+    # Backup original before modifying
+    $backupPath = "$filePath.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+    Copy-Item $filePath $backupPath -Force
+
+    [xml]$xml = Get-Content $filePath
+
+    $appSettings = $xml.configuration.appSettings
+    if (-not $appSettings) {
+        $appSettings = $xml.CreateElement("appSettings")
+        [void]$xml.configuration.AppendChild($appSettings)
+    }
+
+    $node = $appSettings.SelectSingleNode("add[@key='$key']")
+    if ($node) {
+        $existingValue = ($node.GetAttribute("value") -replace '\s', '').ToUpper()
+        if ($existingValue -eq $value) {
+            Write-Output "✅ $key value already matches expected certificate hash."
+        } else {
+            $node.SetAttribute("value", $value)
+            Write-Output "Updated '$key' with new cert hash."
+            $xml.Save($filePath)
+        }
+    } else {
+        $addNode = $xml.CreateElement("add")
+        $addNode.SetAttribute("key", $key)
+        $addNode.SetAttribute("value", $value)
+        [void]$appSettings.AppendChild($addNode)
+        Write-Output "Appended new key '$key' with cert hash."
+        $xml.Save($filePath)
+    }
+} else {
+    Write-Output "Step skipped (disabled in config)."
+}
