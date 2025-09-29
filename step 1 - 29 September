@@ -1,152 +1,58 @@
-<#
-.SYNOPSIS
-.DESCRIPTION
-Automates Windows and IIS feature enablement based on config.json.
-Supports: Install, Validate, Rollback operations.
-.NOTES
-Created on: 4 Sept 2025
-#>
-param(
-    [Parameter(Mandatory = $true)]
-    [ValidateSet("install","validate","rollback")]
-    [string]$Action
-)
-
-$ConfigPath = ".config.json"
-
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
-    Write-Output $logEntry
-    Add-Content -Path $config.LogFile -Value $logEntry
-}
-
-# Load Config
-if (-Not (Test-Path $ConfigPath)) {
-    Write-Host "Configuration file not found: $ConfigPath"
-    exit 1
-}
-
-$config = Get-Content -Path $ConfigPath -Raw | ConvertFrom-Json
-Write-Log "$Action operation started."
-
-# --- OS & Admin Check (Only for install/rollback) ---
-if ($Action -ne "validate") {
-    $currentOS = (Get-CimInstance Win32_OperatingSystem).Caption
-    Write-Log "Detected OS: $currentOS"
-    if ($config.SupportedOS -contains $currentOS) {
-        Write-Log "OS is supported: $currentOS"
-    }
-    else {
-        Write-Log "OS not listed in supported config." "WARNING"
-        $resp = $null
-        while ($null -eq $resp) {
-            $resp = Read-Host "Current OS is not in SupportedOS list. Continue anyway? (Y/N)"
-            if ($resp.ToUpper() -eq 'Y') {
-                Write-Log "User chose to continue the script."
-                continue
-            }
-            elseif ($resp.ToUpper() -eq 'N') {
-                Write-Log "Terminated due to unsupported OS"
-                exit 1
-            }
-            else { $resp = $null }
-        }
-    }
-    Write-Log "OS verified."
-
-    $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    if (-not $isAdmin) {
-        Write-Log "Script is not running as administrator!" "WARNING"
-        $resp = $null
-        while ($null -eq $resp) {
-            $resp = Read-Host "You are NOT running as Administrator. Do you still want to continue? (Y/N)"
-            if ($resp.ToUpper() -eq 'Y') {
-                Write-Log "User chose to continue the script."
-                continue
-            }
-            elseif ($resp.ToUpper() -eq 'N') {
-                Write-Log "Terminated due to admin access"
-                exit 1
-            }
-            else { $resp = $null }
-        }
-    }
-    Write-Log "Admin check complete."
-}
-
-switch ($Action) {
-    "install" {
-        Write-Log "Enabling Windows Features..."
-        foreach ($feature in $config.WindowsFeatures.FeaturesToEnable) {
-            try {
-                $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-                if (-not $alreadyInstalled) {
-                    Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop | Out-Null
-                    Write-Log "Installed feature: $feature"
-                }
-                else {
-                    Write-Log "Feature already installed: $feature"
-                }
-            }
-            catch {
-                Write-Log "Failed to install feature $feature : $_" "ERROR"
-            }
-        }
-
-        Write-Log "Triggering system reboot now to finalize windows feature installation."
-        Write-Log "MARKER: RESTART_REQUIRED_AFTER_STEP_1"
-        Write-Log "Install operation Completed."
-        Start-Sleep -Seconds 5
-        Restart-Computer -Force
-    }
-
-    "validate" {
-        $success = $true
-
-        Write-Log "Validating enabled features..."
-        foreach ($feature in $config.WindowsFeatures.FeaturesToEnable) {
-            $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-            if (-not $alreadyInstalled) {
-                Write-Log "Feature NOT enabled as expected: $feature" "WARNING"
-                $success = $false
-            }
-            else {
-                Write-Log "Feature enabled as expected: $feature"
-            }
-        }
-
-        if ($success) {
-            Write-Log "Validation successful. All features in expected state."
-        } else {
-            Write-Log "Validation completed with warnings/errors." "WARNING"
-        }
-    }
-
-    "rollback" {
-        Write-Log "Rolling back changes (disabling all enabled features)..."
-
-        foreach ($feature in $config.WindowsFeatures.FeaturesToEnable) {
-            $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-            if ($alreadyInstalled) {
-                try {
-                    Uninstall-WindowsFeature -Name $feature -ErrorAction Stop | Out-Null
-                    Write-Log "Rolled back (disabled) feature: $feature"
-                }
-                catch {
-                    Write-Log "Rollback failed (disable) for feature $feature : $_" "ERROR"
-                }
-            }
-            else {
-                Write-Log "Feature already not installed (no rollback needed): $feature"
-            }
-        }
-
-        Write-Log "Triggering system reboot now to finalize rollback."
-        Write-Log "MARKER: RESTART_REQUIRED_ROLLBACK_STEP_1"
-        Write-Log "Rollback operation Completed."
-        Start-Sleep -Seconds 5
-        Restart-Computer -Force
-    }
+{
+  "SupportedOS": [
+    "Microsoft Windows Server 2019 Datacenter",
+    "Microsoft Windows Server 2022 Datacenter"
+  ],
+  "LogFiles": {
+    "Install": "C:\\WindowsSetupScript_Install.log",
+    "Validate": "C:\\WindowsSetupScript_Validate.log",
+    "Rollback": "C:\\WindowsSetupScript_Rollback.log"
+  },
+  "StateFile": "C:\\WindowsSetupScript_State.json",
+  "TimeZone": "UTC",
+  "WindowsFeatures": {
+    "FeaturesToEnable": [
+      "NET-Framework-Features",
+      "NET-Framework-45-Features",
+      "NET-Framework-45-Core",
+      "NET-Framework-45-ASPNET",
+      "NET-WCF-Services45",
+      "NET-WCF-HTTP-Activation45",
+      "NET-WCF-TCP-PortSharing45",
+      "WoW64-Support",
+      "PowerShellRoot",
+      "PowerShell-V2",
+      "Telnet-Client",
+      "SNMP-Service",
+      "System-DataArchiver",
+      "XPS-Viewer",
+      "FileAndStorage-Services",
+      "File-Services",
+      "FS-FileServer",
+      "Storage-Services",
+      "Web-Server",
+      "Web-WebServer",
+      "Web-Basic-Auth",
+      "Web-Cert-Auth",
+      "Web-Windows-Auth",
+      "Web-App-Dev",
+      "Web-Net-Ext",
+      "Web-Net-Ext45",
+      "Web-Asp-Net45",
+      "Web-ISAPI-Ext",
+      "Web-ISAPI-Filter",
+      "Web-Ftp-Server",
+      "Web-Ftp-Service",
+      "Web-Ftp-Ext",
+      "Web-Mgmt-Tools",
+      "Web-Mgmt-Console",
+      "Web-Scripting-Tools",
+      "Web-Mgmt-Service",
+      "WAS",
+      "WAS-Process-Model",
+      "WAS-Config-APIs",
+      "Windows-Defender",
+      "AzureArcSetup"
+    ]
+  }
 }
