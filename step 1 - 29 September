@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 .DESCRIPTION
-Automates Windows and IIS feature management based on config.json.
+Automates Windows and IIS feature enablement based on config.json.
 Supports: Install, Validate, Rollback operations.
 .NOTES
 Created on: 4 Sept 2025
@@ -77,7 +77,6 @@ if ($Action -ne "validate") {
 }
 
 switch ($Action) {
-
     "install" {
         Write-Log "Enabling Windows Features..."
         foreach ($feature in $config.WindowsFeatures.FeaturesToEnable) {
@@ -93,24 +92,6 @@ switch ($Action) {
             }
             catch {
                 Write-Log "Failed to install feature $feature : $_" "ERROR"
-            }
-        }
-        
-        Write-Log "Disabling Windows Features..."
-        foreach ($feature in $config.WindowsFeatures.FeaturesToDisable) {
-            try {
-                $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-                if ($alreadyInstalled) {
-                    Write-Host "Disabling: $feature"
-                    Uninstall-WindowsFeature -Name $feature -ErrorAction Stop | Out-Null
-                    Write-Log "Disabled feature: $feature"
-                }
-                else {
-                    Write-Log "Feature already disabled: $feature"
-                }
-            }
-            catch {
-                Write-Log "Failed to disable $feature : $_" "ERROR"
             }
         }
 
@@ -136,18 +117,6 @@ switch ($Action) {
             }
         }
 
-        Write-Log "Validating disabled features..."
-        foreach ($feature in $config.WindowsFeatures.FeaturesToDisable) {
-            $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-            if ($alreadyInstalled) {
-                Write-Log "Feature NOT disabled as expected: $feature" "WARNING"
-                $success = $false
-            }
-            else {
-                Write-Log "Feature disabled as expected: $feature"
-            }
-        }
-
         if ($success) {
             Write-Log "Validation successful. All features in expected state."
         } else {
@@ -156,9 +125,8 @@ switch ($Action) {
     }
 
     "rollback" {
-        Write-Log "Rolling back changes..."
-        
-        # Disable features that were enabled during install
+        Write-Log "Rolling back changes (disabling all enabled features)..."
+
         foreach ($feature in $config.WindowsFeatures.FeaturesToEnable) {
             $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
             if ($alreadyInstalled) {
@@ -172,23 +140,6 @@ switch ($Action) {
             }
             else {
                 Write-Log "Feature already not installed (no rollback needed): $feature"
-            }
-        }
-
-        # Enable features that were disabled during install
-        foreach ($feature in $config.WindowsFeatures.FeaturesToDisable) {
-            $alreadyInstalled = Get-WindowsFeature -Name $feature | Where-Object { $_.Installed }
-            if (-not $alreadyInstalled) {
-                try {
-                    Install-WindowsFeature -Name $feature -IncludeManagementTools -ErrorAction Stop | Out-Null
-                    Write-Log "Rolled back (enabled) feature: $feature"
-                }
-                catch {
-                    Write-Log "Rollback failed (enable) for feature $feature : $_" "ERROR"
-                }
-            }
-            else {
-                Write-Log "Feature already installed (no rollback needed): $feature"
             }
         }
 
