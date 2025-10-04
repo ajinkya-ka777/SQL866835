@@ -2,180 +2,237 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Windows Server Automated Build: Technical Documentation</title>
+    <title>Windows Server Automation - Technical Document</title>
     <style>
-        body { font-family: Calibri, Arial, sans-serif; color: #222; background: #fff; margin: 20px; }
-        h1 { color: #375a7f; }
-        h2 { color: #18bc9c; }
-        h3 { margin-top: 28px; }
-        code, pre { background: #eef; padding: 2px 4px; border-radius: 4px; }
-        table { border-collapse: collapse; margin-top: 14px; }
-        th, td { border: 1px solid #bbb; padding: 6px 10px; }
+        body { font-family: Calibri, Arial, sans-serif; color: #212529; margin: 24px; }
+        h1 { color: #375a7f; margin-bottom: 8px; }
+        h2 { color: #18bc9c; margin-top: 28px; margin-bottom: 8px; }
+        h3 { color: #444; margin-bottom: 6px;}
+        p, li { font-size: 1.05em; line-height: 1.59em; }
+        pre, code { background-color: #f5f8fa; padding: 2px 6px; border-radius: 3px; font-size: 1em; }
+        table { border-collapse: collapse; }
+        td, th { border: 1px solid #cfd8dc; padding: 7px 15px; }
         th { background: #e9ecef; }
-        ul { margin: 0 0 0 18px; }
+        ul { margin-top: 0; }
     </style>
 </head>
 <body>
-<h1>Windows Server Automated Build Scripts</h1>
 
-<h2>Overview</h2>
+<h1>Technical Implementation Document<br/>Windows Server Automated Configuration Scripts</h1>
+
+<h2>Introduction</h2>
 <p>
-This document covers the usage, modification, and purpose of three PowerShell scripts (step1.ps1, step2.ps1, step3.ps1) and the config.json file.
-These scripts automate the provisioning of Windows Server environments, including feature installation, IIS and application configuration, security, and rollback/validation management.
+This document explains the design, usage, and customization approach for two standardized PowerShell scripts that streamline the provisioning and configuration of Windows Server environments.<br>
+The solution is built for practical, repeatable deployment in both new and existing infrastructure, allowing teams to reduce manual work, avoid configuration drift, and simplify rollbacks.
 </p>
 
-<h2>Script Functions</h2>
+<h2>Script Summary</h2>
 <table>
     <tr>
         <th>Script</th>
         <th>Main Purpose</th>
-        <th>Key Actions</th>
+        <th>Key Features</th>
     </tr>
     <tr>
-        <td><b>step1.ps1</b></td>
-        <td>Initial System Prereqs & Feature Setup</td>
+        <td>step1.ps1</td>
+        <td>Initial OS Setup & Foundation</td>
         <td>
             <ul>
-                <li>Installs/validates/rolls back Windows Features</li>
-                <li>Sets TimeZone</li>
-                <li>Prompts for environment and sets Access Control/ACL (DEV/TEST/PROD)</li>
-                <li>Copies Resources: Tools folder, Scripts folder, Application folders</li>
-                <li>Triggers reboot after completion</li>
+              <li>Enables required Windows features and roles as specified in <code>config.json</code></li>
+              <li>Sets system time zone</li>
+              <li>Applies folder access control (ACL), based on administrator-chosen environment: DEV, TEST, or PROD</li>
+              <li>Copies essential resources to configured paths: tools, scripts, application</li>
+              <li>Supports install, validate, and rollback via <code>-Action</code> parameter</li>
+              <li>Keeps comprehensive log files for each operation</li>
+              <li>Automatically triggers reboot when necessary</li>
             </ul>
         </td>
     </tr>
     <tr>
-        <td><b>step2.ps1</b></td>
-        <td>Configures IIS, Services & Application Layer</td>
+        <td>step2.ps1</td>
+        <td>Application, IIS, and Supporting Service Setup</td>
         <td>
             <ul>
                 <li>Installs .NET Hosting Bundle</li>
-                <li>Installs and verifies WebDeploy (preventing multiple installations)</li>
-                <li>Executes GAC commands</li>
-                <li>Imports scheduled tasks</li>
-                <li>Modifies machine.config for app settings</li>
-                <li>Copies & installs SFTP service files</li>
-                <li>Edits FtpsyncService.exe.config for certificate</li>
-                <li>Imports IIS configuration via msdeploy from backup zip</li>
-                <li>Executes service control scripts (stop/start)</li>
-                <li>Restarts IIS and verifies critical URLs (e.g., <code>https://localhost/transfer1</code>) return HTTP 200</li>
-                <li>Validates NAS path access</li>
-            </ul>
-        </td>
-    </tr>
-    <tr>
-        <td><b>step3.ps1</b></td>
-        <td>IIS Backup Import</td>
-        <td>
-            <ul>
-                <li>Imports full IIS sites/configuration from encrypted backup using msdeploy</li>
+                <li>Installs WebDeploy (checks for duplicate installs and updates as needed)</li>
+                <li>Executes GAC configuration scripts</li>
+                <li>Imports scheduled tasks from XML files as per configuration</li>
+                <li>Applies appSettings modifications to both 32 and 64-bit <code>machine.config</code> files</li>
+                <li>Copies and configures SFTP service files; manages service lifecycle</li>
+                <li>Updates <code>FtpsyncService.exe.config</code> for SSL certificate bindings</li>
+                <li>Imports IIS configuration using msdeploy (with encrypted package and password)</li>
+                <li>Executes PowerShell scripts to control application services (stop/start all)</li>
+                <li>Restarts IIS and validates mission-critical URLs for HTTP 200 responses</li>
+                <li>Verifies access to configured NAS share paths</li>
+                <li>Full validation and rollback logic for all features</li>
             </ul>
         </td>
     </tr>
 </table>
 
-<h2>Configurable Settings (config.json)</h2>
-<p>
-All environment details, paths, installers, credentials, and resources are controlled from <b>config.json</b>. Changes to feature sets, ACL, installer paths, scheduled tasks, services, folders, and more should be done by editing this file before execution.
-</p>
-<table>
-    <tr>
-        <th>Key</th>
-        <th>Usage</th>
-        <th>Example Value</th>
-    </tr>
-    <tr><td>WindowsFeatures</td><td>Feature enablement (step1)</td><td><code>["NET-Framework-Core"]</code></td></tr>
-    <tr><td>TimeZone</td><td>System TimeZone setting</td><td><code>"UTC"</code></td></tr>
-    <tr><td>Environments</td><td>Access Control user/group settings, shared folder path per environment</td><td><code>DEV/TEST/PROD</code></td></tr>
-    <tr><td>ToolsCopy, ScriptsCopy, ApplicationFolders</td><td>Source and destination folder paths</td><td><code>{ "Source": "...", "Destination": "..." }</code></td></tr>
-    <tr><td>DotNetHostingBundle</td><td>.NET installation installer path and switch</td><td><code>{ "InstallerPath": "./Resources/dotnet-hosting.msi" }</code></td></tr>
-    <tr><td>WebDeploy</td><td>WebDeploy MSI installer path</td><td><code>"./Resources/WebDeploy_amd64_en-US.msi"</code></td></tr>
-    <tr><td>MsDeployPath</td><td>Path to msdeploy.exe</td><td><code>"C:Program FilesIISMicrosoft Web Deploy V3msdeploy.exe"</code></td></tr>
-    <tr><td>ConfigBackupPath</td><td>IIS backup zip for msdeploy import</td><td><code>"./Resources/IIS_Backup/IIS_Backup.zip"</code></td></tr>
-    <tr><td>EncryptPassword</td><td>Password for IIS backup zip</td><td><code>"StrongP@ss!"</code></td></tr>
-    <tr><td>ScriptExecution</td><td>List of service/script files to execute</td><td><code>{"Scripts": [ { "Path": "...", "RunAsAdmin": true } ]}</code></td></tr>
-    <tr><td>HttpCheckUrls</td><td>Critical URLs to validate after IIS restart</td><td><code>["https://localhost/transfer1"]</code></td></tr>
-    <tr><td>NASPath</td><td>UNC path to NAS for access validation</td><td><code>"\\\
-as-server\\share"</code></td></tr>
-</table>
-
-<h3>How to Modify config.json</h3>
+<h2>File Structure</h2>
 <ul>
-    <li>To change which Windows features are installed, update <code>WindowsFeatures.FeaturesToEnable</code></li>
-    <li>To change which folder is shared or who has access, edit <code>Environments.[DEV/TEST/PROD].AccessControl</code></li>
-    <li>To adjust folder copies, change <code>ToolsCopy</code>, <code>ScriptsCopy</code>, and <code>ApplicationFolders</code></li>
-    <li>To validate different URLs after IIS restart, add them to <code>HttpCheckUrls</code></li>
-    <li>To specify your NAS location for access test, update <code>NASPath</code></li>
-    <li>Change installer paths if your files/resources move to different locations</li>
+    <li><strong>config.json</strong> – master environment/config file for all script variables</li>
+    <li><strong>step1.ps1</strong> – executes base system provisioning</li>
+    <li><strong>step2.ps1</strong> – configures application/IIS/services with full rollback and validation</li>
+    <li><strong>Resources*</strong> – directory for installers, backups, and XML config files referenced in JSON</li>
+    <li><strong>logs*</strong> – stores separate install, validate, and rollback logs per script, per run</li>
 </ul>
 
-<h2>Script Execution Instructions</h2>
+<h2>How to Execute</h2>
 <ol>
-    <li>Edit <b>config.json</b> as required per your environment and resource locations.</li>
+    <li>Update <strong>config.json</strong> for correct environment, resource, and installer settings.</li>
     <li>Open PowerShell as Administrator.</li>
-    <li>Run <b>step1.ps1</b> to install base features & resources:<br>
-        <code>.step1.ps1 -Action install</code></li>
-    <li>System will reboot after step 1 install. Rerun step1 to validate or rollback as needed:<br>
-        <code>.step1.ps1 -Action validate</code><br>
+    <li>Run <strong>step1.ps1</strong> for initial configuration:<br/>
+        <code>.step1.ps1 -Action install</code>
+    </li>
+    <li>After system reboot, validate installation:<br/>
+        <code>.step1.ps1 -Action validate</code>
+    </li>
+    <li>To undo step1 configuration, use rollback:<br/>
         <code>.step1.ps1 -Action rollback</code>
     </li>
-    <li>Run <b>step2.ps1</b> after step1 completion for IIS and application layer:<br>
-        <code>.step2.ps1 -action install</code></li>
-    <li>Validate step2 by running:<br><code>.step2.ps1 -action validate</code></li>
-    <li>Rollback step2 changes, including application, SFTP, services, configs:<br>
-        <code>.step2.ps1 -action rollback</code></li>
-    <li>If full IIS site restore is required, run <b>step3.ps1</b>:
-        <br><code>.step3.ps1</code>
+    <li>Run <strong>step2.ps1</strong> for app/IIS/service setup:<br/>
+        <code>.step2.ps1 -action install</code>
+    </li>
+    <li>Validate step2 setup:<br/>
+        <code>.step2.ps1 -action validate</code>
+    </li>
+    <li>Rollback step2 changes if needed:<br/>
+        <code>.step2.ps1 -action rollback</code>
     </li>
 </ol>
 
-<h2>Validation and Rollback Behaviors</h2>
+<h2>Parameter Usage</h2>
 <ul>
-    <li>Scripts maintain separate log files for install, validate, and rollback actions.</li>
-    <li>Validation checks all configured settings per step, including Windows roles, IIS service, critical URLs, NAS paths, and updated configs.</li>
-    <li>Rollback reverts installed features, folders, and services (when possible). Manual cleanup or backup restoration may be required for some configuration files.</li>
+    <li><code>-Action install</code>: Perform new installation and system setup</li>
+    <li><code>-Action validate</code>: Verify current configuration/folder/service state matches expectations</li>
+    <li><code>-Action rollback</code>: Remove or revert configured resources and features</li>
 </ul>
 
-<h2>Important Notes</h2>
+<h2>Customizing config.json</h2>
+<p>
+The <code>config.json</code> centralizes every environment detail, making customization simple:
+</p>
+<table>
+  <tr>
+    <th>Key/Section</th>
+    <th>Sample Value</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td><code>WindowsFeatures</code></td>
+    <td>[ "NET-Framework-Core", "Web-Server", ... ]</td>
+    <td>Features and roles to install (step 1)</td>
+  </tr>
+  <tr>
+    <td><code>TimeZone</code></td>
+    <td>"UTC"</td>
+    <td>System time zone to set</td>
+  </tr>
+  <tr>
+    <td><code>Environments</code></td>
+    <td>AccessControl per DEV/TEST/PROD<br>
+      { "DEV": { ... }, "PROD": { ... } }
+    </td>
+    <td>Configure user/group ACL for each site</td>
+  </tr>
+  <tr>
+    <td><code>ToolsCopy</code></td>
+    <td>{ "SourceTools": "./Resources/Tools", "DestTools": "D:/Tools" }</td>
+    <td>Source/destination for tools copy</td>
+  </tr>
+  <tr>
+    <td><code>DotNetHostingBundle</code></td>
+    <td>{ "InstallerPath": "./Resources/dotnet-hosting.msi", "SilentArgs": "/quiet /norestart" }</td>
+    <td>.NET Bundle MSI, install arguments</td>
+  </tr>
+  <tr>
+    <td><code>WebDeploy</code></td>
+    <td>{ "InstallerPath": "./Resources/WebDeploy_amd64_en-US.msi" }</td>
+    <td>WebDeploy MSI installer path</td>
+  </tr>
+  <tr>
+    <td><code>MsDeployPath</code></td>
+    <td>"C:/Program Files/IIS/Microsoft Web Deploy V3/msdeploy.exe"</td>
+    <td>Path to msdeploy executable</td>
+  </tr>
+  <tr>
+    <td><code>ConfigBackupPath</code></td>
+    <td>"./Resources/IIS_Backup/IIS_Backup.zip"</td>
+    <td>IIS configuration package for import</td>
+  </tr>
+  <tr>
+    <td><code>ScriptExecution</code></td>
+    <td>{ "Scripts": [ { "Path": "D:/Tools/Scripts/stop_all_services.ps1", "RunAsAdmin": true } ] }</td>
+    <td>Scripts to stop/start all services, executed after IIS config import</td>
+  </tr>
+  <tr>
+    <td><code>HttpCheckUrls</code></td>
+    <td>[ "https://localhost/transfer1" ]</td>
+    <td>Mission-critical URLs for final health check after IIS restart</td>
+  </tr>
+  <tr>
+    <td><code>NASPath</code></td>
+    <td>"\\\
+as-server\\projects"</td>
+    <td>UNC path used for access test</td>
+  </tr>
+</table>
+<p>
+Always ensure file/folder paths and account names are correct and reflect actual network resources before execution. When introducing service or feature changes, update the relevant config sections and test thoroughly in isolated systems first.
+</p>
+
+<h2>Validation & Rollback</h2>
 <ul>
-    <li>Administrative privileges are required for all three scripts.</li>
-    <li>Review <strong>Write-Log</strong> output in log files after each step for error diagnostics.</li>
-    <li>Ensure all source resources (installers, backups, scripts, etc.) specified in config.json exist prior to execution.</li>
-    <li>Machine reboot is triggered after step1 install and after rollback actions to ensure configuration finalization.</li>
-    <li>Do not modify scripts without adjusting config.json accordingly.</li>
-    <li>Access control and security checks are applied only for the selected environment (DEV/TEST/PROD) during deployment.</li>
+  <li>Both scripts maintain separate log files for install, validate, and rollback—these are defined in <code>config.json</code>.</li>
+  <li>After each install, confirm completion via the validate action and check all logged warnings/errors.</li>
+  <li>Rollback actions disable features/services and move/clean application and SFTP resources. Note that certain ACL and config changes may require manual review.</li>
 </ul>
 
-<h2>Appendices</h2>
-<h3>Sample PowerShell Execution Command</h3>
+<h2>Operational Notes and Recommendations</h2>
+<ul>
+    <li>Run all scripts using PowerShell as Administrator for full functionality.</li>
+    <li>Test new configuration changes on non-production servers prior to rollout.</li>
+    <li>Always keep backup copies of logs and configuration files for audit and troubleshooting.</li>
+    <li>For folder permissions, ensure you select the correct environment at prompt during setup—changes only apply to that environment's shared folder.</li>
+    <li>Before launching step2.ps1, make sure step1.ps1 has run successfully and the system has rebooted if required.</li>
+    <li>If any URLs or NAS paths in config change, update <code>HttpCheckUrls</code> and <code>NASPath</code> accordingly.</li>
+</ul>
+
+<h2>Typical Troubleshooting Tips</h2>
+<ul>
+    <li>If a script reports missing resources, double-check all paths and filenames in config.json.</li>
+    <li>If feature installation fails, try running Windows Update and verifying prerequisite packages.</li>
+    <li>Check log files for explicit error details—these will guide most troubleshooting steps.</li>
+    <li>If msdeploy import or WebDeploy installation fails, verify installer version, system architecture, and correct registry checks.</li>
+</ul>
+
+<h2>Standard Script Invocation Examples</h2>
 <pre>
+# Install base system
 .step1.ps1 -Action install
+
+# Validate base install
 .step1.ps1 -Action validate
+
+# Rollback base install
 .step1.ps1 -Action rollback
 
+# Install IIS and applications
 .step2.ps1 -action install
+
+# Validate app/IIS install
 .step2.ps1 -action validate
+
+# Rollback app/IIS install
 .step2.ps1 -action rollback
-
-.step3.ps1
 </pre>
 
-<h3>Editing config.json Example</h3>
-<pre>
-"NASPath": "\\\
-as-server\\projects",
-"HttpCheckUrls": [
-    "https://localhost/transfer1",
-    "https://localhost/health"
-],
-"WebDeploy": {
-    "InstallerPath": ".\\Resources\\WebDeploy_amd64_en-US.msi"
-}
-</pre>
-
-<h2>Support and Extension</h2>
+<h2>Contact and Support</h2>
 <p>
-For advanced environments, additional logic can be added for new resource types or extended feature sets. All change should be reflected in <code>config.json</code> and tested in non-production systems first.
+For additional team questions or improvements, please contact the infrastructure automation owner or refer to your internal support documentation. Customizations and updates should be coordinated with your DevOps or Systems Engineering teams.
 </p>
+
 </body>
 </html>
